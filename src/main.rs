@@ -1,30 +1,40 @@
-use std::str;
-use std::io::prelude::*;
-use std::net::TcpListener;
-use std::net::TcpStream;
+use std::result::Result as Rs;
+use async_std::{
+    io::BufReader,
+    prelude::*,
+    task,
+    net::{TcpStream, TcpListener, ToSocketAddrs},
+};
 
-fn main() {
-    // Listen for incoming TCP connections on localhost port 7878
-	const BIND_ADDRESS: &str = "127.0.0.1:7878";
+type Result<T> = Rs<T, Box<dyn std::error::Error + Send + Sync>>;
 
-    let listener = TcpListener::bind(BIND_ADDRESS).unwrap();
+async fn echo_loop(addr: impl ToSocketAddrs) -> Result<()> {
 
-	println!("Listening on {}...", BIND_ADDRESS);
+    let listener = TcpListener::bind(addr).await?;
+    let mut incoming = listener.incoming();
+    while let Some(stream) = incoming.next().await {
+        let stream = stream?;
+        let peer = stream.peer_addr()?;
+        println!("Accepting from: {}", peer);
+        let _handle = task::spawn(connection_loop(stream));
+    }
+    Ok(())
+}
 
-    // Block forever, handling each request that arrives at this IP address
-    for stream in listener.incoming() {
-        let stream = stream.unwrap();
-        handle_connection(stream);
+async fn connection_loop( mut stream: TcpStream) -> Result<()> {
+    loop {
+        let mut reader = BufReader::new(&stream);
+        let mut line = String::new();
+        reader.read_line(&mut line).await?;
+        stream.write_all(format!("Received {}", line).as_bytes()).await?;
     }
 }
 
-fn handle_connection(mut stream: TcpStream) {
-    // Read the first 1024 bytes of data from the stream
-    let mut buffer = [0; 1024];
-    stream.read(&mut buffer).unwrap();
+fn main() -> Result<()> {
 
-    let response = format!("Received {}", str::from_utf8(&buffer).unwrap_or(""));
+    const BIND_ADDRESS: &str = "127.0.0.1:7878";
 
-    stream.write(response.as_bytes()).unwrap();
-    stream.flush().unwrap();
+    let fut = echo_loop(BIND_ADDRESS);
+    task::block_on(fut)
+
 }
