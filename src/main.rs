@@ -13,16 +13,22 @@ async fn bind_server(addr: impl ToSocketAddrs) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
     let mut incoming = listener.incoming();
     while let Some(stream) = incoming.next().await {
-        let stream = stream?;
-        let peer = stream.peer_addr()?;
-        println!("Accepting from: {}", peer);
-        let _handle = task::spawn(echo_server(stream));
+        match stream {
+            Ok(stream) => {
+                let _handle = task::spawn(echo_server(stream));
+            },
+            Err(e) => {
+                println!("Connection error: {}", e);
+            }
+        }
     }
 
     Ok(())
 }
 
 async fn echo_server(mut stream: TcpStream) -> Result<()> {
+    let peer = stream.peer_addr()?;
+    println!("Accepting from: {}", peer);
     loop {
         let mut reader = BufReader::new(&stream);
         let mut line = String::new();
