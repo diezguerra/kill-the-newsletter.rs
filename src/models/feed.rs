@@ -33,15 +33,16 @@ pub struct Feed {
 
 impl NewFeed {
     pub fn save(&self, conn: &mut Connection) -> usize {
-        let feed_id: usize = conn
-            .execute(
-                concat!(
-                    r#"INSERT INTO "feeds" ("reference", "title") "#,
-                    r#"VALUES (?1, ?2) RETURNING id"#
-                ),
-                params![self.reference, self.title],
-            )
-            .expect("Couldn't insert feed!");
+        conn.execute(
+            concat!(
+                r#"INSERT INTO "feeds" ("reference", "title") "#,
+                r#"VALUES (?1, ?2);"#
+            ),
+            params![self.reference, self.title],
+        )
+        .expect("Couldn't insert feed!");
+
+        let feed_id = conn.last_insert_rowid();
 
         let title = format!("{} inbox created!", self.title);
         let content = format!(
@@ -56,8 +57,8 @@ impl NewFeed {
         </p>
         <p>
           <strong>Don’t share these addresses.</strong><br />
-          They contain an identifier that other people could use to send you spam
-          and to control your newsletter subscriptions.
+          They contain an identifier that other people could use
+          to send you spam and to control your newsletter subscriptions.
         </p>
         <p><strong>Enjoy your readings!</strong></p>
         <p>
@@ -71,8 +72,9 @@ impl NewFeed {
 
         conn.execute(
             concat!(
-                r#"INSERT INTO "entries" ("reference", "feed_id", "title", "author", "content") "#,
-                r#"VALUES (?1, ?2, ?3, ?4, ?5) RETURNING id"#
+                r#"INSERT INTO "entries" "#,
+                r#"("reference", "feed_id", "title", "author", "content") "#,
+                r#"VALUES (?1, ?2, ?3, ?4, ?5);"#
             ),
             params![
                 self.reference,

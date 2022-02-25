@@ -39,7 +39,9 @@ async fn main() {
     sqlite_connection_manager
         .connect()
         .unwrap()
-        .execute_batch(&std::fs::read_to_string("migration.sql").expect("No migration!"))
+        .execute_batch(
+            &std::fs::read_to_string("migration.sql").expect("No migration!"),
+        )
         .expect("Couldn't migrate");
 
     let sqlite_pool = r2d2::Pool::new(sqlite_connection_manager)
