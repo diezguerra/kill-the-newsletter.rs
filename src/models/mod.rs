@@ -1,2 +1,2 @@
-pub mod feed;
 pub mod entry;
+pub mod feed;

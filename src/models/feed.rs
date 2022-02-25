@@ -9,9 +9,9 @@
       );
 
 */
-use serde::{Deserialize, Serialize};
-use rusqlite::{params, Connection};
 use dotenv_codegen::dotenv;
+use rusqlite::{params, Connection};
+use serde::{Deserialize, Serialize};
 
 const WEB_URL: &str = dotenv!("WEB_URL");
 const EMAIL_DOMAIN: &str = dotenv!("EMAIL_DOMAIN");
@@ -32,18 +32,20 @@ pub struct Feed {
 }
 
 impl NewFeed {
-  pub fn save(&self, conn: &mut Connection) -> usize {
+    pub fn save(&self, conn: &mut Connection) -> usize {
+        let feed_id: usize = conn
+            .execute(
+                concat!(
+                    r#"INSERT INTO "feeds" ("reference", "title") "#,
+                    r#"VALUES (?1, ?2) RETURNING id"#
+                ),
+                params![self.reference, self.title],
+            )
+            .expect("Couldn't insert feed!");
 
-    let feed_id: usize = conn.execute(
-      concat!(
-        r#"INSERT INTO "feeds" ("reference", "title") "#,
-        r#"VALUES (?1, ?2) RETURNING id"#),
-      params![self.reference, self.title])
-      .expect("Couldn't insert feed!");
-
-    let title = format!("{} inbox created!", self.title);
-    let content = format!(
-      r#"
+        let title = format!("{} inbox created!", self.title);
+        let content = format!(
+            r#"
         <p>
           Sign up for the newsletter with<br />
           <code class="copyable">{reference}@${email_domain}</code>
@@ -62,15 +64,24 @@ impl NewFeed {
           <a href="{web_url}/"><strong>Create another inbox</strong></a>
         </p>
       "#,
-      web_url=WEB_URL,
-      reference=self.reference,
-      email_domain=EMAIL_DOMAIN);
+            web_url = WEB_URL,
+            reference = self.reference,
+            email_domain = EMAIL_DOMAIN
+        );
 
-    conn.execute(
-      concat!(
-        r#"INSERT INTO "entries" ("reference", "feed_id", "title", "author", "content") "#,
-        r#"VALUES (?1, ?2, ?3, ?4, ?5) RETURNING id"#),
-      params![ self.reference, feed_id.to_string(), title, "Kill The Newsletter", content ])
-      .expect("Couldn't insert initial entry!")
-  }
+        conn.execute(
+            concat!(
+                r#"INSERT INTO "entries" ("reference", "feed_id", "title", "author", "content") "#,
+                r#"VALUES (?1, ?2, ?3, ?4, ?5) RETURNING id"#
+            ),
+            params![
+                self.reference,
+                feed_id.to_string(),
+                title,
+                "Kill The Newsletter",
+                content
+            ],
+        )
+        .expect("Couldn't insert initial entry!")
+    }
 }
