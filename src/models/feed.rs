@@ -10,15 +10,21 @@
 
 */
 use dotenv_codegen::dotenv;
+use rand::distributions::{Alphanumeric, DistString};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
 const WEB_URL: &str = dotenv!("WEB_URL");
 const EMAIL_DOMAIN: &str = dotenv!("EMAIL_DOMAIN");
 
+fn new_reference() -> String {
+    Alphanumeric
+        .sample_string(&mut rand::thread_rng(), 16)
+        .to_lowercase()
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NewFeed {
-    pub reference: String,
     pub title: String,
 }
 
@@ -32,17 +38,17 @@ pub struct Feed {
 }
 
 impl NewFeed {
-    pub fn save(&self, conn: &mut Connection) -> usize {
+    pub fn save(&self, conn: &mut Connection) -> String {
+        let reference: String = new_reference();
+
         conn.execute(
             concat!(
                 r#"INSERT INTO "feeds" ("reference", "title") "#,
                 r#"VALUES (?1, ?2);"#
             ),
-            params![self.reference, self.title],
+            params![reference, self.title],
         )
         .expect("Couldn't insert feed!");
-
-        let feed_id = conn.last_insert_rowid();
 
         let title = format!("{} inbox created!", self.title);
         let content = format!(
@@ -66,24 +72,19 @@ impl NewFeed {
         </p>
       "#,
             web_url = WEB_URL,
-            reference = self.reference,
+            reference = reference,
             email_domain = EMAIL_DOMAIN
         );
 
         conn.execute(
             concat!(
                 r#"INSERT INTO "entries" "#,
-                r#"("reference", "feed_id", "title", "author", "content") "#,
-                r#"VALUES (?1, ?2, ?3, ?4, ?5);"#
+                r#"("reference", "title", "author", "content") "#,
+                r#"VALUES (?1, ?2, ?3, ?4);"#
             ),
-            params![
-                self.reference,
-                feed_id.to_string(),
-                title,
-                "Kill The Newsletter",
-                content
-            ],
+            params![reference, title, "Kill The Newsletter", content],
         )
-        .expect("Couldn't insert initial entry!")
+        .expect("Couldn't insert initial entry!");
+        reference
     }
 }

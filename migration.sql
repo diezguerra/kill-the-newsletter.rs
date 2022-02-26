@@ -1,4 +1,6 @@
-CREATE TABLE "feeds" (
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS "feeds" (
     "id" INTEGER PRIMARY KEY AUTOINCREMENT,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -6,14 +8,14 @@ CREATE TABLE "feeds" (
     "title" TEXT NOT NULL
 );
 
-CREATE TABLE "entries" (
+CREATE TABLE IF NOT EXISTS "entries" (
     "id" INTEGER PRIMARY KEY AUTOINCREMENT,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "reference" TEXT NOT NULL UNIQUE,
-    "feed_id" INTEGER NOT NULL REFERENCES "feeds",
     "title" TEXT NOT NULL,
     "author" TEXT NOT NULL,
-    "content" TEXT NOT NULL
+    "content" TEXT NOT NULL,
+    FOREIGN KEY(reference) REFERENCES feeds(reference)
 );
 
-CREATE INDEX "entriesFeed" ON "entries" ("feed");
+CREATE INDEX IF NOT EXISTS "entriesFeed" ON "entries" ("feed");
