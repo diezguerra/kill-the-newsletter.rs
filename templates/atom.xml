@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<link
+    rel="self"
+    type="application/atom+xml"
+    href="{{ web_url }}/feeds/{{ feed_reference }}.xml"
+/>
+<link
+    rel="alternate"
+    type="text/html"
+    href="{{ web_url }}/"
+/>
+<id>urn:kill-the-newsletter:{{ feed_reference }}</id>
+<title>{{ feed_title }}</title>
+<subtitle>
+    Kill the Newsletter! Inbox:
+    {{ feed_reference }}@{{ email_domain }} →
+    {{ web_url }}/feeds/{{ feed_reference }}.xml
+</subtitle >
+<!-- <updated>{{ feed_title }}</updated> (was updated_at) -->
+<author><name>Kill the Newsletter!</name></author>
+{% for entry in entries %}
+    <entry>
+        <id>urn:kill-the-newsletter:{{ entry.reference }}</id>
+        <title>{{ entry.title }}</title>
+        <author><name>{{ entry.author }}</name></author>
+        <updated>{{ entry.created_at }}</updated>
+        <link
+        rel="alternate"
+        type="text/html"
+        href="{{ web_url }}/alternates/{{ entry.reference }}.html"
+        />
+        <content type="html">{{ entry.content }}</content>
+    </entry>
+{% endfor %}
+</feed>

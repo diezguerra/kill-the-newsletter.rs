@@ -9,6 +9,7 @@
       );
 
 */
+use askama::Template;
 use dotenv_codegen::dotenv;
 use rand::distributions::{Alphanumeric, DistString};
 use rusqlite::{params, Connection};
@@ -30,11 +31,19 @@ pub struct NewFeed {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Feed {
-    pub id: u64,
+    pub id: i64,
     pub created_at: String,
     pub updated_at: String,
     pub reference: String,
     pub title: String,
+}
+
+#[derive(Template)]
+#[template(path = "sentinel_entry.html")]
+struct SentinelTemplate<'a> {
+    web_url: &'a str,
+    reference: &'a str,
+    email_domain: &'a str,
 }
 
 impl NewFeed {
@@ -51,30 +60,12 @@ impl NewFeed {
         .expect("Couldn't insert feed!");
 
         let title = format!("{} inbox created!", self.title);
-        let content = format!(
-            r#"
-        <p>
-          Sign up for the newsletter with<br />
-          <code class="copyable">{reference}@${email_domain}</code>
-        </p>
-        <p>
-          Subscribe to the Atom feed at<br />
-          <code class="copyable">{web_url}/feeds/{reference}.xml</code>
-        </p>
-        <p>
-          <strong>Don’t share these addresses.</strong><br />
-          They contain an identifier that other people could use
-          to send you spam and to control your newsletter subscriptions.
-        </p>
-        <p><strong>Enjoy your readings!</strong></p>
-        <p>
-          <a href="{web_url}/"><strong>Create another inbox</strong></a>
-        </p>
-      "#,
-            web_url = WEB_URL,
-            reference = reference,
-            email_domain = EMAIL_DOMAIN
-        );
+        let content = SentinelTemplate {
+            web_url: WEB_URL,
+            email_domain: EMAIL_DOMAIN,
+            reference: &reference,
+        };
+        let content = content.render().unwrap();
 
         conn.execute(
             concat!(
@@ -87,4 +78,16 @@ impl NewFeed {
         .expect("Couldn't insert initial entry!");
         reference
     }
+}
+
+pub fn get_title_by_reference(
+  reference: &String,
+  conn: &mut Connection,
+) -> Result<String, rusqlite::Error> {
+  let mut stmt = conn.prepare(
+      r#"SELECT title FROM feeds WHERE reference = ?1"#,
+  )?;
+  let row = stmt.query_row(params![reference], |row| row.get(0))?;
+
+  Ok(row)
 }
