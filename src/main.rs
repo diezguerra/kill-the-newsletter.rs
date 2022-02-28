@@ -1,10 +1,10 @@
 mod models;
 
 use askama::Template;
-use askama_axum::IntoResponse;
 use axum::{
     extract::{Extension, Path},
     http::StatusCode,
+    response::IntoResponse,
     routing::{get, post},
     AddExtensionLayer, Json, Router
 };
@@ -14,7 +14,7 @@ use r2d2_sqlite::SqliteConnectionManager;
 use std::net::{SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 
-use crate::models::feed::{NewFeed, Feed, get_title_by_reference};
+use crate::models::feed::{NewFeed, get_title_by_reference};
 use crate::models::entry::{Entry, find_reference};
 
 const WEB_URL: &str = dotenv!("WEB_URL");
@@ -43,16 +43,16 @@ struct AtomTemplate {
 async fn get_reference(
     Path(reference): Path<String>,
     Extension(pool_arc): Extension<Arc<r2d2::Pool<SqliteConnectionManager>>>,
-) -> AtomTemplate {
+) -> (StatusCode, impl IntoResponse) {
     let pool = pool_arc.clone();
     let mut conn = pool.get().expect("Couldn't get database connection");
     let entries = match find_reference(&reference, &mut conn) {
         Ok(entries) => entries,
-        Err(_) => panic!("oh no")//return (StatusCode::NOT_FOUND, "Not found")
+        Err(_) => return (StatusCode::NOT_FOUND, String::from("Not found"))
     };
-    println!("Entries {:#?}", entries);
+
     if entries.len() == 0 {
-        //return (StatusCode::NOT_FOUND, &"Not found");
+        return (StatusCode::NOT_FOUND, String::from("Not found"));
     }
 
     let title = match get_title_by_reference(&reference, &mut conn) {
@@ -60,15 +60,13 @@ async fn get_reference(
         _ => String::from("No feed title found")
     };
 
-    println!("title! {:#?}", title);
-
-    AtomTemplate {
+    (StatusCode::OK, AtomTemplate {
         web_url: Box::new(String::from(WEB_URL)),
         email_domain: Box::new(String::from(EMAIL_DOMAIN)),
         feed_title: Box::new(title),
         feed_reference: Box::new(reference),
         entries: entries
-    }
+    }.render().expect("Failed to render Atom"))
 }
 
 fn populate_if_needed(mngr: &SqliteConnectionManager) {
