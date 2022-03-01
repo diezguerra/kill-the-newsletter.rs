@@ -1,6 +1,6 @@
 mod models;
-mod vars;
 mod time;
+mod vars;
 
 use askama::Template;
 use axum::{
@@ -8,17 +8,17 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
-    AddExtensionLayer, Json, Router
+    AddExtensionLayer, Json, Router,
 };
 use r2d2::ManageConnection;
 use r2d2_sqlite::SqliteConnectionManager;
 use std::net::{SocketAddr, SocketAddrV4};
 use std::sync::Arc;
 
-use crate::models::feed::{NewFeed, get_title_by_reference};
-use crate::models::entry::{Entry, find_reference};
-use crate::vars::{WEB_URL, EMAIL_DOMAIN};
+use crate::models::entry::{find_reference, Entry};
+use crate::models::feed::{get_title_by_reference, NewFeed};
 use crate::time::filters;
+use crate::vars::{EMAIL_DOMAIN, WEB_URL};
 
 async fn create_feed(
     item: Json<NewFeed>,
@@ -48,7 +48,7 @@ async fn get_reference(
     let mut conn = pool.get().expect("Couldn't get database connection");
     let entries = match find_reference(&reference, &mut conn) {
         Ok(entries) => entries,
-        Err(_) => return (StatusCode::NOT_FOUND, String::from("Not found"))
+        Err(_) => return (StatusCode::NOT_FOUND, String::from("Not found")),
     };
 
     if entries.len() == 0 {
@@ -57,16 +57,21 @@ async fn get_reference(
 
     let title = match get_title_by_reference(&reference, &mut conn) {
         Ok(title) => title,
-        _ => String::from("No feed title found")
+        _ => String::from("No feed title found"),
     };
 
-    (StatusCode::OK, AtomTemplate {
-        web_url: Box::new(String::from(WEB_URL)),
-        email_domain: Box::new(String::from(EMAIL_DOMAIN)),
-        feed_title: Box::new(title),
-        feed_reference: Box::new(reference),
-        entries: entries
-    }.render().expect("Failed to render Atom"))
+    (
+        StatusCode::OK,
+        AtomTemplate {
+            web_url: Box::new(String::from(WEB_URL)),
+            email_domain: Box::new(String::from(EMAIL_DOMAIN)),
+            feed_title: Box::new(title),
+            feed_reference: Box::new(reference),
+            entries: entries,
+        }
+        .render()
+        .expect("Failed to render Atom"),
+    )
 }
 
 fn populate_if_needed(mngr: &SqliteConnectionManager) {

@@ -14,7 +14,7 @@ use rand::distributions::{Alphanumeric, DistString};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
-use crate::vars::{WEB_URL, EMAIL_DOMAIN};
+use crate::vars::{EMAIL_DOMAIN, WEB_URL};
 
 fn new_reference() -> String {
     Alphanumeric
@@ -79,13 +79,12 @@ impl NewFeed {
 }
 
 pub fn get_title_by_reference(
-  reference: &String,
-  conn: &mut Connection,
+    reference: &String,
+    conn: &mut Connection,
 ) -> Result<String, rusqlite::Error> {
-  let mut stmt = conn.prepare(
-      r#"SELECT title FROM feeds WHERE reference = ?1"#,
-  )?;
-  let row = stmt.query_row(params![reference], |row| row.get(0))?;
+    let mut stmt =
+        conn.prepare(r#"SELECT title FROM feeds WHERE reference = ?1"#)?;
+    let row = stmt.query_row(params![reference], |row| row.get(0))?;
 
-  Ok(row)
+    Ok(row)
 }

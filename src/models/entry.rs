@@ -29,22 +29,21 @@ pub fn find_reference(
         r#"SELECT id, created_at, reference, title, author, content FROM entries
            WHERE reference = ?1"#,
     )?;
-    let entries_iter = stmt
-        .query_map(params![reference], |row| {
-            Ok(Entry {
-                id: row.get(0)?,
-                created_at: row.get(1)?,
-                reference: row.get(2)?,
-                title: row.get(3)?,
-                author: row.get(4)?,
-                content: row.get(5)?,
-            })
-        })?;
+    let entries_iter = stmt.query_map(params![reference], |row| {
+        Ok(Entry {
+            id: row.get(0)?,
+            created_at: row.get(1)?,
+            reference: row.get(2)?,
+            title: row.get(3)?,
+            author: row.get(4)?,
+            content: row.get(5)?,
+        })
+    })?;
 
     let mut entries = Vec::new();
     for entry in entries_iter {
         entries.push(entry?);
     }
-    
+
     Ok(entries)
 }
