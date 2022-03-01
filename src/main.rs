@@ -1,4 +1,6 @@
 mod models;
+mod vars;
+mod time;
 
 use askama::Template;
 use axum::{
@@ -8,7 +10,6 @@ use axum::{
     routing::{get, post},
     AddExtensionLayer, Json, Router
 };
-use dotenv_codegen::dotenv;
 use r2d2::ManageConnection;
 use r2d2_sqlite::SqliteConnectionManager;
 use std::net::{SocketAddr, SocketAddrV4};
@@ -16,9 +17,8 @@ use std::sync::Arc;
 
 use crate::models::feed::{NewFeed, get_title_by_reference};
 use crate::models::entry::{Entry, find_reference};
-
-const WEB_URL: &str = dotenv!("WEB_URL");
-const EMAIL_DOMAIN: &str = dotenv!("EMAIL_DOMAIN");
+use crate::vars::{WEB_URL, EMAIL_DOMAIN};
+use crate::time::filters;
 
 async fn create_feed(
     item: Json<NewFeed>,

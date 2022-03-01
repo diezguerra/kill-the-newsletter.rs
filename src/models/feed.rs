@@ -10,13 +10,11 @@
 
 */
 use askama::Template;
-use dotenv_codegen::dotenv;
 use rand::distributions::{Alphanumeric, DistString};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
-const WEB_URL: &str = dotenv!("WEB_URL");
-const EMAIL_DOMAIN: &str = dotenv!("EMAIL_DOMAIN");
+use crate::vars::{WEB_URL, EMAIL_DOMAIN};
 
 fn new_reference() -> String {
     Alphanumeric

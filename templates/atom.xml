@@ -21,10 +21,10 @@
 <author><name>Kill the Newsletter!</name></author>
 {% for entry in entries %}
     <entry>
-        <id>urn:kill-the-newsletter:{{ entry.reference }}</id>
+        <id>urn:kill-the-newsletter:{{ entry.reference }}:{{ entry.id }}</id>
         <title>{{ entry.title }}</title>
         <author><name>{{ entry.author }}</name></author>
-        <updated>{{ entry.created_at }}</updated>
+        <updated>{{ entry.created_at|rfc3339 }}</updated>
         <link
         rel="alternate"
         type="text/html"
