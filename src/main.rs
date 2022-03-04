@@ -12,8 +12,12 @@ use axum::{
 };
 use r2d2::ManageConnection;
 use r2d2_sqlite::SqliteConnectionManager;
+use std::error::Error;
 use std::net::{SocketAddr, SocketAddrV4};
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
+use tokio::net::{TcpListener, TcpStream};
+use tokio::signal;
 
 use crate::models::entry::{find_reference, Entry};
 use crate::models::feed::{get_title_by_reference, NewFeed};
@@ -98,12 +102,49 @@ async fn main() {
         .route("/:reference", get(get_reference))
         .layer(AddExtensionLayer::new(pool_arc));
 
-    let addr: SocketAddrV4 = "127.0.0.1:7878".parse().unwrap();
+    let smtp_listener = TcpListener::bind("127.0.0.1:2525").await.unwrap();
 
-    let addr = SocketAddr::from(addr);
+    let http_addr: SocketAddrV4 = "127.0.0.1:7878".parse().unwrap();
+    let http_addr = SocketAddr::from(http_addr);
+    let http_listener = axum::Server::bind(&http_addr);
 
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    tokio::select! {
+        _ = http_listener.serve(app.into_make_service()) => {
+            eprintln!("HTTP service exited prematurely");
+        }
+        _ = serve_smtp(&smtp_listener) => {
+            eprintln!("SMTP service exited prematurely");
+        }
+        _ = signal::ctrl_c() => {
+            eprintln!("OMG CTRL-C!");
+        }
+    }
+}
+
+async fn serve_smtp(listener: &TcpListener) -> Result<(), Box<dyn Error>> {
+    loop {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        tokio::spawn(async move {
+            match serve_smtp_request(&mut socket).await {
+                Ok(_) => println!("SMTP response succeeded!"),
+                Err(e) => println!("SMTP response failed: {:#?}", e),
+            }
+        });
+    }
+}
+
+async fn serve_smtp_request(
+    stream: &mut TcpStream,
+) -> Result<(), Box<dyn Error>> {
+    loop {
+        stream.readable().await?;
+        let mut buf = [0; 4096];
+        stream.try_read(&mut buf); // if ?'ed, gets Kind( WouldBlock,)
+        if std::str::from_utf8(&buf)?.starts_with("QUIT") {
+            stream.write_all(b"221 BYE").await?;
+            break;
+        }
+        stream.write_all(&buf).await?;
+    }
+    Ok(())
 }
