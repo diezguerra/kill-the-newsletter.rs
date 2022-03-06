@@ -1,5 +1,5 @@
 use std::error::Error;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 
 pub async fn serve_smtp(listener: &TcpListener) -> Result<(), Box<dyn Error>> {
@@ -17,15 +17,16 @@ pub async fn serve_smtp(listener: &TcpListener) -> Result<(), Box<dyn Error>> {
 async fn serve_smtp_request(
     stream: &mut TcpStream,
 ) -> Result<(), Box<dyn Error>> {
+    let mut stream = BufReader::new(stream);
     loop {
-        stream.readable().await?;
-        let mut buf = [0; 4096];
-        stream.try_read(&mut buf); // if ?'ed, gets Kind( WouldBlock,)
-        if std::str::from_utf8(&buf)?.starts_with("QUIT") {
+        let mut buf = String::new();
+        stream.read_line(&mut buf).await?;
+
+        if buf.starts_with("QUIT") {
             stream.write_all(b"221 BYE").await?;
             break;
         }
-        stream.write_all(&buf).await?;
+        stream.write_all(buf.as_bytes()).await?;
     }
     Ok(())
 }
