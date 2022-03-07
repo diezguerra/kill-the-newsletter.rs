@@ -1,13 +1,13 @@
 mod database;
-mod http;
 mod models;
 mod smtp;
 mod time;
 mod vars;
+mod web;
 
 use crate::database::get_db_pool;
-use crate::http::build_app;
 use crate::smtp::serve_smtp;
+use crate::web::build_app;
 use std::net::{SocketAddr, SocketAddrV4};
 use tokio::net::TcpListener;
 use tokio::signal;

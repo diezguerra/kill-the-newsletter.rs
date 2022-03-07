@@ -16,12 +16,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::vars::{EMAIL_DOMAIN, WEB_URL};
 
-fn new_reference() -> String {
-    Alphanumeric
-        .sample_string(&mut rand::thread_rng(), 16)
-        .to_lowercase()
-}
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NewFeed {
     pub title: String,
@@ -36,6 +30,19 @@ pub struct Feed {
     pub title: String,
 }
 
+impl Feed {
+    pub fn get_title_given_reference(
+        reference: &String,
+        conn: &mut Connection,
+    ) -> Result<String, rusqlite::Error> {
+        let mut stmt =
+            conn.prepare(r#"SELECT title FROM feeds WHERE reference = ?1"#)?;
+        let row = stmt.query_row(params![reference], |row| row.get(0))?;
+
+        Ok(row)
+    }
+}
+
 #[derive(Template)]
 #[template(path = "sentinel_entry.html")]
 struct SentinelTemplate<'a> {
@@ -45,8 +52,14 @@ struct SentinelTemplate<'a> {
 }
 
 impl NewFeed {
+    fn new_reference() -> String {
+        Alphanumeric
+            .sample_string(&mut rand::thread_rng(), 16)
+            .to_lowercase()
+    }
+
     pub fn save(&self, conn: &mut Connection) -> String {
-        let reference: String = new_reference();
+        let reference: String = NewFeed::new_reference();
 
         conn.execute(
             concat!(
@@ -76,15 +89,4 @@ impl NewFeed {
         .expect("Couldn't insert initial entry!");
         reference
     }
-}
-
-pub fn get_title_by_reference(
-    reference: &String,
-    conn: &mut Connection,
-) -> Result<String, rusqlite::Error> {
-    let mut stmt =
-        conn.prepare(r#"SELECT title FROM feeds WHERE reference = ?1"#)?;
-    let row = stmt.query_row(params![reference], |row| row.get(0))?;
-
-    Ok(row)
 }
