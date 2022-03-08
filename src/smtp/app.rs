@@ -14,6 +14,23 @@ pub async fn serve_smtp(listener: &TcpListener) -> Result<(), Box<dyn Error>> {
     }
 }
 
+async fn serve_smtp_request_echo(
+    stream: &mut TcpStream,
+) -> Result<(), Box<dyn Error>> {
+    let mut stream = BufReader::new(stream);
+    loop {
+        let mut buf = String::new();
+        stream.read_line(&mut buf).await?;
+
+        if buf.starts_with("QUIT") {
+            stream.write_all(b"221 BYE").await?;
+            break;
+        }
+        stream.write_all(buf.as_bytes()).await?;
+    }
+    Ok(())
+}
+
 async fn serve_smtp_request(
     stream: &mut TcpStream,
 ) -> Result<(), Box<dyn Error>> {

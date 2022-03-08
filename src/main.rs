@@ -6,7 +6,7 @@ mod vars;
 mod web;
 
 use crate::database::get_db_pool;
-use crate::smtp::serve_smtp;
+use crate::smtp::app::serve_smtp;
 use crate::web::build_app;
 use std::net::{SocketAddr, SocketAddrV4};
 use tokio::net::TcpListener;
