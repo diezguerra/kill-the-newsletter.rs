@@ -11,9 +11,13 @@ use crate::web::build_app;
 use std::net::{SocketAddr, SocketAddrV4};
 use tokio::net::TcpListener;
 use tokio::signal;
+use tracing::error;
+use tracing_subscriber;
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt::init();
+
     let pool = get_db_pool();
 
     let http_addr: SocketAddrV4 = "127.0.0.1:7878".parse().unwrap();
@@ -25,13 +29,13 @@ async fn main() {
 
     tokio::select! {
         _ = http_listener.serve(http_app) => {
-            eprintln!("HTTP service exited prematurely");
+            error!("HTTP service exited prematurely");
         }
         _ = serve_smtp(&smtp_listener) => {
-            eprintln!("SMTP service exited prematurely");
+            error!("SMTP service exited prematurely");
         }
         _ = signal::ctrl_c() => {
-            eprintln!("OMG CTRL-C!");
+            error!("OMG CTRL-C!");
         }
     }
 }
