@@ -15,9 +15,9 @@ pub enum State {
 
 #[derive(Debug)]
 pub enum Event {
-    Greeted,
+    Greeting,
     MailFrom,
-    RcptTo { rcpt_to: String },
+    Recipient { recipient: String },
     Data,
     EndOfFile { buf: String },
     Reset,
@@ -27,9 +27,11 @@ pub enum Event {
 impl State {
     pub fn next(self, event: &Event) -> State {
         match (self, event) {
-            (State::Connected, Event::Greeted) => State::Greeted,
+            (State::Connected, Event::Greeting) => State::Greeted,
             (State::Greeted, Event::MailFrom) => State::MailFrom,
-            (State::MailFrom, Event::RcptTo { rcpt_to: _ }) => State::RcptTo,
+            (State::MailFrom, Event::Recipient { recipient: _ }) => {
+                State::RcptTo
+            }
             (State::RcptTo, Event::Data) => State::Data,
             (State::Data, Event::EndOfFile { buf: _ }) => State::Done,
             (_, Event::Quit) => State::Quit,
@@ -47,30 +49,39 @@ impl State {
             .await;
     }
 
+    // We respond to the latest command based on the current State, then
+    // process the response and generate an event with or without payload
     pub async fn run(&self, stream: &mut BufReader<&mut TcpStream>) -> Event {
         match *self {
             State::Connected => {
                 debug!("Sending 220 READY");
-                State::send_command(stream, "220 READY").await;
+                State::send_command(stream, "220 SHOWMEWHATCHAGOT").await;
             }
             State::Greeted | State::MailFrom | State::RcptTo => {
-                debug!("Sending 250 OK to {:#?}", *self);
-                State::send_command(stream, "250 OK").await;
+                debug!("Responding 250 OK to {:#?}", *self);
+                State::send_command(stream, "250 YEASURE").await;
             }
             State::Data => {
-                debug!("Sending 354 DALEMAMBO to {:#?}", *self);
+                debug!("Responding 354 DALEMAMBO to {:#?}", *self);
                 State::send_command(stream, "354 DALEMAMBO").await;
             }
             State::Done | State::Quit => {
-                debug!("Sending OK & QUIT to {:#?}", *self);
-                State::send_command(stream, "250 BYE FELICIA").await;
+                debug!("Responding OK & QUIT from {:#?}", *self);
+                State::send_command(stream, "250 BYEFELICIA").await;
+                State::send_command(stream, "QUIT ").await;
                 return Event::Quit;
             }
         }
 
         let mut buf = String::new();
-        let mut loop_buf = String::new();
+
+        // If we're receiving data, we loop until we find the lone period
+        // character that signals EOF, or till the pipe is broken. As we
+        // loop, we push what we get into the main buffer and clear clear the
+        // local one.
         if *self == State::Data {
+            let mut loop_buf = String::new();
+
             loop {
                 stream.read_line(&mut loop_buf).await.unwrap();
                 debug!("Looper collected: {}", loop_buf);
@@ -90,17 +101,19 @@ impl State {
                     }
                 }
             }
+        // If we're not receive DATA, we just read a one-line command
         } else {
             stream.read_line(&mut buf).await.unwrap();
             debug!("read SMTP command: {}, len: {}", buf.trim(), buf.len());
         }
 
-        let command = buf.to_string();
-
-        match &command[..4] {
-            "EHLO" | "HELO" => Event::Greeted,
+        // We return which event has happened so the state machine can figure
+        // out what's next, or a QUIT event if we don't know or data was
+        // already collected (our 250 OK response to QUIT will do)
+        match &buf[..4] {
+            "EHLO" | "HELO" => Event::Greeting,
             "MAIL" => Event::MailFrom,
-            "RCPT" => Event::RcptTo { rcpt_to: buf },
+            "RCPT" => Event::Recipient { recipient: buf },
             "DATA" => Event::Data,
             "QUIT" => Event::Quit,
             "RSET" => Event::Reset,
