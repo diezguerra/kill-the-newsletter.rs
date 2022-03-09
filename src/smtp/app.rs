@@ -4,7 +4,9 @@ use tokio::io::BufReader;
 use tokio::net::{TcpListener, TcpStream};
 use tracing::{debug, error, info};
 
+use crate::smtp::parse::{parse, ParsedEmail};
 use crate::smtp::state_machine::{Event, State};
+use crate::vars::EMAIL_DOMAIN;
 
 // Yanked blindly from https://emailregex.com/
 const EMAIL_REGEX: &str = concat!(
@@ -48,22 +50,32 @@ async fn serve_smtp_request(
                 recipient.push_str(rcpt.trim());
             }
             Event::EndOfFile { buf } => {
-                debug!("DATA={}", buf.trim());
+                //debug!("DATA={}", buf.trim());
                 email.push_str(buf.trim());
             }
+            Event::Fail { msg } => return Err(msg.into()),
             Event::Quit => break,
             _ => {}
         }
     }
 
     let email_find = Regex::new(EMAIL_REGEX).unwrap();
-    info!(
-        "Received email for {}",
-        match email_find.find(&recipient) {
-            Some(m) => m.as_str(),
-            _ => "email not valid",
-        }
-    );
+    let recipient = match email_find.find(&recipient) {
+        Some(m) => m.as_str(),
+        _ => "invalid@email.address",
+    };
+
+    debug!("Received email for {}", recipient);
+
+    let parsed: ParsedEmail = parse(email.as_bytes());
+
+    if !recipient.ends_with(EMAIL_DOMAIN) && !parsed.to.ends_with(EMAIL_DOMAIN)
+    {
+        debug!("Received invalid inbox, discard message");
+    } else {
+        // Store in DB
+        debug!("Storing email {}", parsed);
+    }
 
     Ok(())
 }

@@ -21,6 +21,32 @@ pub fn sqlite_datetime_to_rfc3339(date: &str) -> String {
     dt.to_rfc3339()
 }
 
+#[derive(Debug)]
+pub struct Epoch(pub i64);
+
+impl Epoch {
+    fn now() -> Epoch {
+        Epoch(Utc::now().timestamp())
+    }
+}
+
+impl From<i64> for Epoch {
+    fn from(timestamp: i64) -> Epoch {
+        match timestamp {
+            0 => Epoch::now(),
+            _ => Epoch(timestamp),
+        }
+    }
+}
+
+impl ToString for Epoch {
+    fn to_string(&self) -> String {
+        NaiveDateTime::from_timestamp(self.0, 0)
+            .format("%Y-%m-%d %H:%M:%S")
+            .to_string()
+    }
+}
+
 pub mod filters {
     use crate::time::sqlite_datetime_to_rfc3339;
 

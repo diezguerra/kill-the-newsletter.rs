@@ -9,6 +9,7 @@ pub enum State {
     MailFrom,
     RcptTo,
     Data,
+    Failed,
     Done,
     Quit,
 }
@@ -21,6 +22,7 @@ pub enum Event {
     Data,
     EndOfFile { buf: String },
     Reset,
+    Fail { msg: String },
     Quit,
 }
 
@@ -28,12 +30,17 @@ impl State {
     pub fn next(self, event: &Event) -> State {
         match (self, event) {
             (State::Connected, Event::Greeting) => State::Greeted,
+            (State::Connected, _) => State::Failed,
             (State::Greeted, Event::MailFrom) => State::MailFrom,
+            (State::Greeted, _) => State::Failed,
             (State::MailFrom, Event::Recipient { recipient: _ }) => {
                 State::RcptTo
             }
+            (State::MailFrom, _) => State::Failed,
             (State::RcptTo, Event::Data) => State::Data,
+            (State::RcptTo, _) => State::Failed,
             (State::Data, Event::EndOfFile { buf: _ }) => State::Done,
+            (State::Data, _) => State::Failed,
             (_, Event::Quit) => State::Quit,
             (_, Event::Reset) => State::Quit,
             (_, _) => State::Quit,
@@ -65,7 +72,18 @@ impl State {
                 debug!("Responding 354 DALEMAMBO to {:#?}", *self);
                 State::send_command(stream, "354 DALEMAMBO").await;
             }
-            State::Done | State::Quit => {
+            State::Failed => {
+                debug!("Failed Event, QUITting {:#?}", *self);
+                State::send_command(stream, "QUIT ").await;
+                return Event::Fail {
+                    msg: "Wrong command order".to_owned(),
+                };
+            }
+            State::Done => {
+                debug!("Responding OK & QUIT from {:#?}", *self);
+                State::send_command(stream, "250 DULYNOTED").await;
+            }
+            State::Quit => {
                 debug!("Responding OK & QUIT from {:#?}", *self);
                 State::send_command(stream, "250 BYEFELICIA").await;
                 State::send_command(stream, "QUIT ").await;
@@ -84,7 +102,6 @@ impl State {
 
             loop {
                 stream.read_line(&mut loop_buf).await.unwrap();
-                debug!("Looper collected: {}", loop_buf);
                 match loop_buf.as_str() {
                     ".\r\n" => {
                         debug!("Found the escape seq, returning buffer");
@@ -92,10 +109,12 @@ impl State {
                     }
                     "" => {
                         debug!("Broken Pipe?");
-                        return Event::Quit;
+                        return Event::Fail {
+                            msg: "Broken pipe".to_owned(),
+                        };
                     }
                     _ => {
-                        debug!("Collected line, continuing");
+                        //debug!("Collected line, continuing");
                         buf.push_str(&loop_buf);
                         loop_buf.clear();
                     }
@@ -104,12 +123,18 @@ impl State {
         // If we're not receive DATA, we just read a one-line command
         } else {
             stream.read_line(&mut buf).await.unwrap();
-            debug!("read SMTP command: {}, len: {}", buf.trim(), buf.len());
+            debug!("read SMTP command: {}, (len: {})", buf.trim(), buf.len());
         }
 
         // We return which event has happened so the state machine can figure
         // out what's next, or a QUIT event if we don't know or data was
         // already collected (our 250 OK response to QUIT will do)
+        if buf.len() < 4 {
+            return Event::Fail {
+                msg: "Empty command".to_owned(),
+            };
+        }
+
         match &buf[..4] {
             "EHLO" | "HELO" => Event::Greeting,
             "MAIL" => Event::MailFrom,
@@ -117,7 +142,12 @@ impl State {
             "DATA" => Event::Data,
             "QUIT" => Event::Quit,
             "RSET" => Event::Reset,
-            _ => Event::Quit,
+            _ => match *self {
+                State::Done | State::Quit => Event::Quit,
+                _ => Event::Fail {
+                    msg: "Wrong command".to_owned(),
+                },
+            },
         }
     }
 }

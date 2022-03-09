@@ -93,7 +93,9 @@ pub async fn get_feed(
         .status(StatusCode::OK)
         .header(
             http::header::CONTENT_TYPE,
-            http::HeaderValue::from_static("application/atom+xml; charset=utf-8"),
+            http::HeaderValue::from_static(
+                "application/atom+xml; charset=utf-8",
+            ),
         )
         .body(body::boxed(body::Full::from(template)))
         .unwrap())
