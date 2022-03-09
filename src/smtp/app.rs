@@ -59,7 +59,10 @@ async fn serve_smtp_request(
     let email_find = Regex::new(EMAIL_REGEX).unwrap();
     info!(
         "Received email for {}",
-        email_find.find(&recipient).unwrap().as_str()
+        match email_find.find(&recipient) {
+            Some(m) => m.as_str(),
+            _ => "email not valid",
+        }
     );
 
     Ok(())

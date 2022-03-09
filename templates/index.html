@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block main %}
+<form method="POST" action="{{ web_url }}" class="style--form">
+    <p>
+      <input type="text" name="title" placeholder="Newsletter name…" maxlength="500" required="" pattern=".*\S.*" autocomplete="off" autofocus="">
+    </p>
+    <p>
+      <button>Create Inbox</button>
+    </p>
+</form>
+{% endblock %}

@@ -23,7 +23,7 @@ pub struct Entry {
 
 impl Entry {
     pub fn find_by_reference(
-        reference: &String,
+        reference: &str,
         conn: &mut Connection,
     ) -> Result<Vec<Entry>, rusqlite::Error> {
         let mut stmt = conn.prepare(
