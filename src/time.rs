@@ -1,6 +1,6 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
 
-/// Trying doctests
+/// Usage
 /// ```
 /// # use ktn::time::sqlite_datetime_to_rfc3339;
 /// let date_in = "2021-12-01 12:01:03";
