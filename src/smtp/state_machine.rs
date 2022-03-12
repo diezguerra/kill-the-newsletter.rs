@@ -148,7 +148,7 @@ impl State {
             _ => match *self {
                 State::Done | State::Quit => Event::Quit,
                 _ => Event::Fail {
-                    msg: "Wrong command".to_owned(),
+                    msg: format!("Wrong command: {}", &buf[..4]),
                 },
             },
         }

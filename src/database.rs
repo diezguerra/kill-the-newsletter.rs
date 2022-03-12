@@ -33,7 +33,7 @@ const MIGRATION: &str = r#"
 fn populate_if_needed(mngr: &SqliteConnectionManager) {
     mngr.connect()
         .unwrap()
-        .execute_batch(&MIGRATION)
+        .execute_batch(MIGRATION)
         .expect("Couldn't run initial migration");
 }
 

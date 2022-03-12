@@ -97,8 +97,10 @@ impl NewFeed {
     }
 
     pub fn save(&mut self, conn: &mut Connection) -> String {
-        let reference: String = NewFeed::new_reference();
-        self.reference.replace(reference.to_owned());
+        let reference = self
+            .reference
+            .get_or_insert_with(NewFeed::new_reference)
+            .to_owned();
 
         conn.execute(
             concat!(
