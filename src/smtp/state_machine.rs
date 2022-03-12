@@ -1,3 +1,8 @@
+//! # SMTP State Machine
+//!
+//! First and clumsy attempt at building a state machine to keep track of
+//! SMTP back and forth communication. Seems to work for simple cases...
+
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tracing::debug;

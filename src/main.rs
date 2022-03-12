@@ -27,6 +27,8 @@ async fn main() {
     let http_app = build_app(pool);
     let smtp_listener = TcpListener::bind("127.0.0.1:2525").await.unwrap();
 
+    // Serve HTTP and SMTP, and end the program whenever either of those
+    // futures returns (fails) or if a system interrupt is received.
     tokio::select! {
         _ = http_listener.serve(http_app) => {
             error!("HTTP service exited prematurely");

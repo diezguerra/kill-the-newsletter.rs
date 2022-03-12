@@ -1,3 +1,5 @@
+//! Representation of the Atom XML template to be rendered
+
 use askama_axum::Template;
 
 use crate::models::Entry;

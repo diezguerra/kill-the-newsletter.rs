@@ -1,3 +1,5 @@
+//! Main entrypoint for the web application
+
 use axum::{
     routing::{get, post},
     AddExtensionLayer, Router,

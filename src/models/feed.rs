@@ -1,14 +1,15 @@
-/*
+//! # This model works on top of the generated `feeds` SQL table
+//!
+//! ```sql
+//!     CREATE TABLE "feeds" (
+//!       "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+//!       "createdAt" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+//!       "updatedAt" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+//!       "reference" TEXT NOT NULL UNIQUE,
+//!       "title" TEXT NOT NULL
+//!     );
+//! ```
 
-      CREATE TABLE "feeds" (
-        "id" INTEGER PRIMARY KEY AUTOINCREMENT,
-        "createdAt" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "updatedAt" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "reference" TEXT NOT NULL UNIQUE,
-        "title" TEXT NOT NULL
-      );
-
-*/
 use askama::Template;
 use rand::distributions::{Alphanumeric, DistString};
 use rusqlite::{params, Connection};
@@ -16,22 +17,28 @@ use serde::{Deserialize, Serialize};
 
 use crate::vars::{EMAIL_DOMAIN, WEB_URL};
 
+/// A helper Struct to pass on to Axum so it can deserialize a form submission
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NewFeed {
     pub title: String,
     pub reference: Option<String>,
 }
 
+/// Represents an individual feed and its related email address and title.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Feed {
     pub id: i64,
     pub created_at: String,
     pub updated_at: String,
+    /// The `reference` of a [`Feed`] is a randomly generated alphanumeric
+    /// string that is used as the email recipient and the unique ID of each
+    /// [`Feed`].
     pub reference: String,
     pub title: String,
 }
 
 impl Feed {
+    /// Returns a [`Feed`]'s `title` given its `reference`.
     pub fn get_title_given_reference(
         reference: &String,
         conn: &mut Connection,
@@ -41,6 +48,25 @@ impl Feed {
         let row = stmt.query_row(params![reference], |row| row.get(0))?;
 
         Ok(row)
+    }
+
+    /// Checks whether a [`Feed`] exists given its `reference`.
+    pub fn feed_exists(
+        reference: &str,
+        conn: &mut Connection,
+    ) -> Result<bool, rusqlite::Error> {
+        let feed_count: isize = conn
+            .query_row(
+                "SELECT count(id) FROM feeds WHERE reference = ?1",
+                params![reference],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        match feed_count {
+            0 => Ok(false),
+            _ => Ok(true),
+        }
     }
 }
 
@@ -104,7 +130,6 @@ impl NewFeed {
         reference
     }
 
-    //pub fn created_template<'a>(reference: Option<&'a str>, title: &'a str) -> FeedCreatedTemplate<'a> {
     pub fn created_template(&self) -> FeedCreatedTemplate {
         let entry = SentinelTemplate {
             email_domain: EMAIL_DOMAIN,

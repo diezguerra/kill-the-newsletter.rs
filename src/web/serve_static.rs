@@ -1,10 +1,12 @@
+//! # Static file serving handler
+//!
 //! Usage:
 //! Setting `STATIC_FOLDER` in OS env or `.env` file such as
 //! `STATIC_FOLDER=name_of_folder`
 //! ```
 //! let app = Router::new().nest("/static", get(static))
 //! ```
-//! 
+//!
 //! This was yanked from <https://github.com/tokio-rs/axum/discussions/446>
 
 use axum::{

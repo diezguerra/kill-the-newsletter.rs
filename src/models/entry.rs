@@ -1,15 +1,21 @@
-/*
-    CREATE TABLE "entries" (
-        "id" INTEGER PRIMARY KEY AUTOINCREMENT,
-        "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        "reference" TEXT NOT NULL UNIQUE,
-        "title" TEXT NOT NULL,
-        "author" TEXT NOT NULL,
-        "content" TEXT NOT NULL
-    );
+/*!
+ * # This model works on top of the generated `entries` SQL table
+ *
+ * ```sql
+ *    CREATE TABLE "entries" (
+ *        "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+ *        "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ *        "reference" TEXT NOT NULL UNIQUE,
+ *        "title" TEXT NOT NULL,
+ *        "author" TEXT NOT NULL,
+ *        "content" TEXT NOT NULL
+ *    );
+ * ```
 */
 
+use crate::models::Feed;
 use rusqlite::{params, Connection};
+use std::error::Error;
 
 #[derive(Debug)]
 pub struct Entry {
@@ -22,6 +28,7 @@ pub struct Entry {
 }
 
 impl Entry {
+    /// Returns all [`Entry`] records for a given [`Feed`] reference
     pub fn find_by_reference(
         reference: &str,
         conn: &mut Connection,
@@ -47,5 +54,36 @@ impl Entry {
         }
 
         Ok(entries)
+    }
+
+    /// Saves the [`Entry`] to the database, unless the [`Feed`] doesn't exist.
+    pub fn save(&self, conn: &mut Connection) -> Result<(), Box<dyn Error>> {
+        if !Feed::feed_exists(&self.reference, conn).is_ok() {
+            let err: Box<dyn Error> = format!(
+                "Tried saving Entry for Feed ref:{} which didn't exist",
+                &self.reference
+            )
+            .into();
+            return Err(err);
+        }
+
+        conn.execute(
+            concat!(
+                r#"INSERT INTO "entries" "#,
+                r#"("reference", "title", "author", "content", "created_at") "#,
+                r#"VALUES (?1, ?2, ?3, ?4, ?5);"#
+            ),
+            params![
+                &self.reference,
+                &self.title,
+                // We don't need the address for display within the feed
+                &self.author.split("<").next().unwrap_or("").trim(),
+                &self.content,
+                &self.created_at
+            ],
+        )
+        .expect("Couldn't save entry in the DB!");
+
+        Ok(())
     }
 }

@@ -1,3 +1,5 @@
+//! Time helpers to create, format, and parse datetimes in epoch,
+//! SQLite, and RFC3339 (Atom) standards.
 use chrono::{DateTime, NaiveDateTime, Utc};
 
 /// Usage

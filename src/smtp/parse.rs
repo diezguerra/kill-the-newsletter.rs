@@ -1,10 +1,19 @@
+//! # Mail Parsing module
+//!
+//! A bunch of boilerplate to use the `mailparse` crate and extract content,
+//! including HTML if multipart email is found.
+//!
+//! Some fun with Traits, for good measure.
+
 use mailparse::{dateparse, parse_mail, MailHeaderMap};
 use tracing::debug;
 
 use crate::time::Epoch;
 
+/// Output struct for the SMTP server, containing all the goodies
 pub struct ParsedEmail {
     pub to: String,
+    pub from: String,
     pub subject: String,
     pub date: String,
     pub body: String,
@@ -13,8 +22,12 @@ pub struct ParsedEmail {
 impl ParsedEmail {
     pub fn to_string(&self) -> String {
         format!(
-            "ParsedEmail {{ to: {}, subject: {}, date: {}, body[..50]: {} }}",
+            concat!(
+                r#"ParsedEmail {{ to: {}, from: {}, subject: {}, date: {},"#,
+                r#"" body[..50]: {} }}"#
+            ),
             &self.to,
+            &self.from,
             &self.subject,
             &self.date,
             if &self.body.len() > &50 {
@@ -44,6 +57,11 @@ pub fn parse(email: &[u8]) -> ParsedEmail {
         .headers
         .get_first_value("To")
         .unwrap_or("unknown@recipient.mail".to_owned());
+
+    let from = parsed
+        .headers
+        .get_first_value("From")
+        .unwrap_or("unknown@sender.mail".to_owned());
 
     let mut body = String::new();
 
@@ -81,6 +99,7 @@ pub fn parse(email: &[u8]) -> ParsedEmail {
 
     ParsedEmail {
         to,
+        from,
         subject,
         date,
         body,

@@ -1,9 +1,19 @@
+//! # SMTP server main entry point
+//!
+//! Receives a listener and spawns a green thread for each open connection,
+//! uses the [`State`] machine to tease out the newsletter email from the
+//! client, then parses and stores the entry if it's valid.
+
+use r2d2_sqlite::SqliteConnectionManager;
 use regex::Regex;
 use std::error::Error;
+use std::sync::Arc;
 use tokio::io::BufReader;
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
+use crate::database::get_db_pool;
+use crate::models::Entry;
 use crate::smtp::parse::{parse, ParsedEmail};
 use crate::smtp::state_machine::{Event, State};
 use crate::vars::EMAIL_DOMAIN;
@@ -20,10 +30,13 @@ const EMAIL_REGEX: &str = concat!(
 );
 
 pub async fn serve_smtp(listener: &TcpListener) -> Result<(), Box<dyn Error>> {
+    let pool_arc = get_db_pool();
+
     loop {
         let (mut socket, _) = listener.accept().await.unwrap();
+        let pool = pool_arc.clone();
         tokio::spawn(async move {
-            match serve_smtp_request(&mut socket).await {
+            match serve_smtp_request(&mut socket, pool).await {
                 Ok(_) => debug!("SMTP request succeeded!"),
                 Err(e) => error!("SMTP response failed: {:#?}", e),
             }
@@ -33,6 +46,7 @@ pub async fn serve_smtp(listener: &TcpListener) -> Result<(), Box<dyn Error>> {
 
 async fn serve_smtp_request(
     stream: &mut TcpStream,
+    pool: Arc<r2d2::Pool<SqliteConnectionManager>>,
 ) -> Result<(), Box<dyn Error>> {
     let mut stream = BufReader::new(stream);
 
@@ -75,6 +89,19 @@ async fn serve_smtp_request(
     } else {
         // Store in DB
         debug!("Storing email {}", parsed);
+
+        let received = Entry {
+            id: 0, // this won't be used
+            created_at: parsed.date,
+            reference: parsed.to.split("@").next().unwrap_or("").to_owned(),
+            title: parsed.subject,
+            author: parsed.from,
+            content: parsed.body,
+        };
+
+        let mut conn = pool.get().expect("Couldn't get database connection");
+        received.save(&mut conn).expect("Couldn't save entry");
+        debug!("Saved entry!");
     }
 
     Ok(())
