@@ -93,7 +93,7 @@ async fn serve_smtp_request(
         let received = Entry {
             id: 0, // this won't be used
             created_at: parsed.date,
-            reference: parsed.to.split("@").next().unwrap_or("").to_owned(),
+            reference: parsed.to.split('@').next().unwrap_or("").to_owned(),
             title: parsed.subject,
             author: parsed.from,
             content: parsed.body,

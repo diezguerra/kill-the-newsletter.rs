@@ -8,9 +8,9 @@ use crate::time::filters;
 #[derive(Template)]
 #[template(path = "atom.xml", ext = "xml")]
 pub struct FeedAtomTemplate {
-    pub web_url: Box<String>,
-    pub email_domain: Box<String>,
-    pub feed_title: Box<String>,
-    pub feed_reference: Box<String>,
+    pub web_url: String,
+    pub email_domain: String,
+    pub feed_title: String,
+    pub feed_reference: String,
     pub entries: Vec<Entry>,
 }

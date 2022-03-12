@@ -40,7 +40,7 @@ pub struct Feed {
 impl Feed {
     /// Returns a [`Feed`]'s `title` given its `reference`.
     pub fn get_title_given_reference(
-        reference: &String,
+        reference: &str,
         conn: &mut Connection,
     ) -> Result<String, rusqlite::Error> {
         let mut stmt =
@@ -111,7 +111,7 @@ impl NewFeed {
 
         let content = SentinelTemplate {
             email_domain: EMAIL_DOMAIN,
-            reference: &self.reference.as_ref().unwrap(),
+            reference: self.reference.as_ref().unwrap(),
             title: &self.title,
             web_url: WEB_URL,
         };
@@ -133,17 +133,17 @@ impl NewFeed {
     pub fn created_template(&self) -> FeedCreatedTemplate {
         let entry = SentinelTemplate {
             email_domain: EMAIL_DOMAIN,
-            reference: &self.reference.as_ref().unwrap(),
+            reference: self.reference.as_ref().unwrap(),
             title: &self.title,
             web_url: WEB_URL,
         };
 
         FeedCreatedTemplate {
             email_domain: EMAIL_DOMAIN,
-            reference: &self.reference.as_ref().unwrap(),
+            reference: self.reference.as_ref().unwrap(),
             title: &self.title,
             web_url: WEB_URL,
-            entry: entry,
+            entry,
         }
     }
 }

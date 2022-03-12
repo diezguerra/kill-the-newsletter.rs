@@ -58,7 +58,7 @@ impl Entry {
 
     /// Saves the [`Entry`] to the database, unless the [`Feed`] doesn't exist.
     pub fn save(&self, conn: &mut Connection) -> Result<(), Box<dyn Error>> {
-        if !Feed::feed_exists(&self.reference, conn).is_ok() {
+        if !Feed::feed_exists(&self.reference, conn)? {
             let err: Box<dyn Error> = format!(
                 "Tried saving Entry for Feed ref:{} which didn't exist",
                 &self.reference
@@ -77,7 +77,7 @@ impl Entry {
                 &self.reference,
                 &self.title,
                 // We don't need the address for display within the feed
-                &self.author.split("<").next().unwrap_or("").trim(),
+                &self.author.split('<').next().unwrap_or("").trim(),
                 &self.content,
                 &self.created_at
             ],

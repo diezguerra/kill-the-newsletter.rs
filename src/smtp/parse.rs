@@ -19,9 +19,10 @@ pub struct ParsedEmail {
     pub body: String,
 }
 
-impl ParsedEmail {
-    pub fn to_string(&self) -> String {
-        format!(
+impl std::fmt::Display for ParsedEmail {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
             concat!(
                 r#"ParsedEmail {{ to: {}, from: {}, subject: {}, date: {},"#,
                 r#"" body[..50]: {} }}"#
@@ -30,18 +31,12 @@ impl ParsedEmail {
             &self.from,
             &self.subject,
             &self.date,
-            if &self.body.len() > &50 {
+            if self.body.len() > 50 {
                 &self.body[..50]
             } else {
                 &self.body
             }
         )
-    }
-}
-
-impl std::fmt::Display for ParsedEmail {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string())
     }
 }
 
@@ -51,22 +46,22 @@ pub fn parse(email: &[u8]) -> ParsedEmail {
     let subject = parsed
         .headers
         .get_first_value("Subject")
-        .unwrap_or("No subject".to_owned());
+        .unwrap_or_else(|| "No subject".to_owned());
 
     let to = parsed
         .headers
         .get_first_value("To")
-        .unwrap_or("unknown@recipient.mail".to_owned());
+        .unwrap_or_else(|| "unknown@recipient.mail".to_owned());
 
     let from = parsed
         .headers
         .get_first_value("From")
-        .unwrap_or("unknown@sender.mail".to_owned());
+        .unwrap_or_else(|| "unknown@sender.mail".to_owned());
 
     let mut body = String::new();
 
     // Get the HTML version or the first one if that one isn't found
-    if parsed.subparts.len() > 0 {
+    if !parsed.subparts.is_empty() {
         for part in 0..parsed.subparts.len() {
             if parsed.subparts[part]
                 .ctype
@@ -76,7 +71,7 @@ pub fn parse(email: &[u8]) -> ParsedEmail {
                 body.push_str(&parsed.subparts[part].get_body().unwrap());
             }
         }
-        if body.len() == 0 {
+        if body.is_empty() {
             body.push_str(&parsed.subparts[0].get_body().unwrap());
         }
     } else {
@@ -88,7 +83,7 @@ pub fn parse(email: &[u8]) -> ParsedEmail {
             parsed
                 .headers
                 .get_first_value("Date")
-                .unwrap_or("".to_owned())
+                .unwrap_or_else(|| "".to_owned())
                 .as_str(),
         )
         .unwrap_or(0),

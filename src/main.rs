@@ -12,7 +12,6 @@ use std::net::{SocketAddr, SocketAddrV4};
 use tokio::net::TcpListener;
 use tokio::signal;
 use tracing::error;
-use tracing_subscriber;
 
 #[tokio::main]
 async fn main() {

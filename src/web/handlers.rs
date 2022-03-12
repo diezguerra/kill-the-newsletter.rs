@@ -16,8 +16,7 @@ pub async fn create_feed(
     form: Form<NewFeed>,
     Extension(pool_arc): Extension<Arc<r2d2::Pool<SqliteConnectionManager>>>,
 ) -> impl IntoResponse {
-    let pool = pool_arc.clone();
-    let mut conn = pool.get().expect("Couldn't get database connection");
+    let mut conn = pool_arc.get().expect("Couldn't get database connection");
     println!("{:?}", form);
     let mut form = NewFeed {
         title: form.title.to_owned(),
@@ -32,19 +31,18 @@ pub async fn get_feed_created(
     Path(reference): Path<String>,
     Extension(pool_arc): Extension<Arc<r2d2::Pool<SqliteConnectionManager>>>,
 ) -> Result<impl IntoResponse, KtnError> {
-    let pool = pool_arc.clone();
-    let mut conn = pool.get().expect("Couldn't get database connection");
+    let mut conn = pool_arc.get().expect("Couldn't get database connection");
 
     let title = Feed::get_title_given_reference(&reference, &mut conn).unwrap();
     let feed = NewFeed {
-        reference: Some(reference.to_owned()),
-        title: title,
+        reference: Some(reference),
+        title,
     };
 
     let template = feed
         .created_template()
         .render()
-        .unwrap_or(String::from("Couldn't render Atom feed template"));
+        .unwrap_or_else(|_| String::from("Couldn't render Atom feed template"));
 
     Ok(Response::builder()
         .status(StatusCode::OK)
@@ -60,8 +58,7 @@ pub async fn get_feed(
     Path(reference): Path<String>,
     Extension(pool_arc): Extension<Arc<r2d2::Pool<SqliteConnectionManager>>>,
 ) -> Result<impl IntoResponse, KtnError> {
-    let pool = pool_arc.clone();
-    let mut conn = pool.get().expect("Couldn't get database connection");
+    let mut conn = pool_arc.get().expect("Couldn't get database connection");
 
     let no_ext: &str = &reference[..reference.len() - 4];
     let entries = match Entry::find_by_reference(no_ext, &mut conn) {
@@ -69,25 +66,24 @@ pub async fn get_feed(
         Err(_) => return Err(KtnError::InternalServerError),
     };
 
-    if entries.len() == 0 {
+    if entries.is_empty() {
         return Err(KtnError::NotFoundError);
     }
 
-    let title =
-        match Feed::get_title_given_reference(&no_ext.to_owned(), &mut conn) {
-            Ok(title) => title,
-            _ => String::from("No feed title found"),
-        };
+    let title = match Feed::get_title_given_reference(no_ext, &mut conn) {
+        Ok(title) => title,
+        _ => String::from("No feed title found"),
+    };
 
     let template = FeedAtomTemplate {
-        web_url: Box::new(String::from(WEB_URL)),
-        email_domain: Box::new(String::from(EMAIL_DOMAIN)),
-        feed_title: Box::new(title),
-        feed_reference: Box::new(no_ext.to_owned()),
-        entries: entries,
+        web_url: String::from(WEB_URL),
+        email_domain: String::from(EMAIL_DOMAIN),
+        feed_title: title,
+        feed_reference: no_ext.to_owned(),
+        entries,
     }
     .render()
-    .unwrap_or(String::from("Couldn't render created feed template"));
+    .unwrap_or_else(|_| String::from("Couldn't render created feed template"));
 
     Ok(Response::builder()
         .status(StatusCode::OK)
@@ -105,10 +101,10 @@ pub async fn get_index() -> impl IntoResponse {
     #[derive(Template)]
     #[template(path = "index.html", ext = "html")]
     struct IndexTemplate {
-        pub web_url: Box<String>,
+        pub web_url: String,
     }
 
     IndexTemplate {
-        web_url: Box::new(String::from(WEB_URL)),
+        web_url: String::from(WEB_URL),
     }
 }

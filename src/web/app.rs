@@ -1,8 +1,9 @@
 //! Main entrypoint for the web application
 
 use axum::{
+    extract::Extension,
     routing::{get, post},
-    AddExtensionLayer, Router,
+    Router,
 };
 use r2d2_sqlite::SqliteConnectionManager;
 use std::sync::Arc;
@@ -19,7 +20,7 @@ pub fn build_app(
         .route("/:reference", get(handlers::get_feed_created))
         .route("/feeds/:reference", get(handlers::get_feed))
         .nest("/static", get(serve_static::handler))
-        .layer(AddExtensionLayer::new(pool_arc))
+        .layer(Extension(pool_arc))
         .layer(TraceLayer::new_for_http())
         .into_make_service()
 }

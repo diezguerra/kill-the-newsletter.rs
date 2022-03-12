@@ -53,7 +53,7 @@ pub mod filters {
     use crate::time::sqlite_datetime_to_rfc3339;
 
     pub fn rfc3339(s: &str) -> ::askama::Result<String> {
-        Ok(sqlite_datetime_to_rfc3339(&s))
+        Ok(sqlite_datetime_to_rfc3339(s))
     }
 }
 
