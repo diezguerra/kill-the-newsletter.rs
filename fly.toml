@@ -12,10 +12,6 @@ processes = []
   DB_FILE = "/data/ktn.db"
   STATIC_FOLDER = "static"
 
-[build]
-  builder = "paketobuildpacks/builder:tiny"
-  buildpacks = ["gcr.io/paketo-community/rust"]
-
 [experimental]
   allowed_public_ports = [80, 443, 25]
   auto_rollback = true

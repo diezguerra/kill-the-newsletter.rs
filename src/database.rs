@@ -5,12 +5,35 @@ use std::sync::Arc;
 
 use crate::vars::DB_FILE;
 
+const MIGRATION: &str = r#"
+    PRAGMA foreign_keys = ON;
+
+    CREATE TABLE IF NOT EXISTS "feeds" (
+        "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+        "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updated_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "reference" TEXT NOT NULL UNIQUE,
+        "title" TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS "entries" (
+        "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+        "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "reference" TEXT NOT NULL,
+        "title" TEXT NOT NULL,
+        "author" TEXT NOT NULL,
+        "content" TEXT NOT NULL,
+        FOREIGN KEY(reference) REFERENCES feeds(reference)
+    );
+
+    CREATE INDEX IF NOT EXISTS "entriesFeed" ON "entries" ("feed");"#;
+
 /// Runs the migration script every time a pool is created, but the three
 /// CREATE statements in it only run when the tables and index don't yet exist
 fn populate_if_needed(mngr: &SqliteConnectionManager) {
     mngr.connect()
         .unwrap()
-        .execute_batch(&std::fs::read_to_string("migration.sql").unwrap())
+        .execute_batch(&MIGRATION)
         .expect("Couldn't run initial migration");
 }
 
