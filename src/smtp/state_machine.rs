@@ -135,9 +135,7 @@ impl State {
         // out what's next, or a QUIT event if we don't know or data was
         // already collected (our 250 OK response to QUIT will do)
         if buf.len() < 4 {
-            return Event::Fail {
-                msg: "Empty command".to_owned(),
-            };
+            return Event::Quit;
         }
 
         match &buf[..4] {

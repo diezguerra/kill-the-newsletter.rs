@@ -2,6 +2,7 @@
 
 use axum::{
     extract::Extension,
+    response::Redirect,
     routing::{get, post},
     Router,
 };
@@ -17,6 +18,12 @@ pub fn build_app(
     Router::new()
         .route("/", get(handlers::get_index))
         .route("/", post(handlers::create_feed))
+        .route(
+            "/favicon.ico",
+            get(|| async {
+                Redirect::permanent("/static/favicon.ico".parse().unwrap())
+            }),
+        )
         .route("/:reference", get(handlers::get_feed_created))
         .route("/feeds/:reference", get(handlers::get_feed))
         .nest("/static", get(serve_static::handler))

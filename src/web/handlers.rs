@@ -7,6 +7,7 @@ use axum::{
 };
 use r2d2_sqlite::SqliteConnectionManager;
 use std::sync::Arc;
+use tracing::error;
 
 use crate::models::{Entry, Feed, FeedAtomTemplate, NewFeed};
 use crate::vars::{EMAIL_DOMAIN, WEB_URL};
@@ -33,10 +34,21 @@ pub async fn get_feed_created(
 ) -> Result<impl IntoResponse, KtnError> {
     let mut conn = pool_arc.get().expect("Couldn't get database connection");
 
-    let title = Feed::get_title_given_reference(&reference, &mut conn).unwrap();
+    let title = Feed::get_title_given_reference(&reference, &mut conn);
+    if let Err(rusqlite::Error::QueryReturnedNoRows) = title {
+        error!(
+            concat!(
+                "web::handlers::get_feed_created couldn't ",
+                "get_title_given_reference  \"{}\""
+            ),
+            &reference
+        );
+        return Err(KtnError::NotFoundError);
+    }
+
     let feed = NewFeed {
         reference: Some(reference),
-        title,
+        title: title.unwrap(),
     };
 
     let template = feed
