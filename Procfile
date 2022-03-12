@@ -1,0 +1,1 @@
+server: cargo run --release

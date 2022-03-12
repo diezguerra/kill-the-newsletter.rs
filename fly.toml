@@ -1,0 +1,66 @@
+# fly.toml file generated for ktnrs on 2022-03-11T18:55:24-08:00
+
+app = "ktnrs"
+
+kill_signal = "SIGINT"
+kill_timeout = 5
+processes = []
+
+[env]
+  WEB_URL = "http://ktnrs.com"
+  EMAIL_DOMAIN = "ktnrs.com"
+  DB_FILE = "/data/ktn.db"
+  STATIC_FOLDER = "static"
+
+[build]
+  builder = "paketobuildpacks/builder:tiny"
+  buildpacks = ["gcr.io/paketo-community/rust"]
+
+[experimental]
+  allowed_public_ports = [80, 443, 25]
+  auto_rollback = true
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+
+  [services.concurrency]
+    hard_limit = 500
+    soft_limit = 200
+    type = "connections"
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = "443"
+
+  [[services.tcp_checks]]
+    grace_period = "1s"
+    interval = "15s"
+    restart_limit = 0
+    timeout = "2s"
+
+[[services]]
+  internal_port = 2525
+  protocol = "tcp"
+
+  [services.concurrency]
+    hard_limit = 500
+    soft_limit = 200
+    type = "connections"
+
+  [[services.ports]]
+    port = 25
+
+  [[services.tcp_checks]]
+    grace_period = "1s"
+    interval = "15s"
+    restart_limit = 0
+    timeout = "2s"
+
+[mounts]
+source="ktn_data"
+destination="/data"

@@ -19,12 +19,12 @@ async fn main() {
 
     let pool = get_db_pool();
 
-    let http_addr: SocketAddrV4 = "127.0.0.1:7878".parse().unwrap();
+    let http_addr: SocketAddrV4 = "0.0.0.0:8080".parse().unwrap();
     let http_addr = SocketAddr::from(http_addr);
 
     let http_listener = axum::Server::bind(&http_addr);
     let http_app = build_app(pool);
-    let smtp_listener = TcpListener::bind("127.0.0.1:2525").await.unwrap();
+    let smtp_listener = TcpListener::bind("0.0.0.0:2525").await.unwrap();
 
     // Serve HTTP and SMTP, and end the program whenever either of those
     // futures returns (fails) or if a system interrupt is received.
