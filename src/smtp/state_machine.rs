@@ -22,6 +22,7 @@ pub enum State {
 #[derive(Debug)]
 pub enum Event {
     Greeting,
+    NoTls,
     MailFrom,
     Recipient { recipient: String },
     Data,
@@ -35,6 +36,7 @@ impl State {
     pub fn next(self, event: &Event) -> State {
         match (self, event) {
             (State::Connected, Event::Greeting) => State::Greeted,
+            (state, Event::NoTls) => state,
             (State::Connected, _) => State::Failed,
             (State::Greeted, Event::MailFrom) => State::MailFrom,
             (State::Greeted, _) => State::Failed,
@@ -46,6 +48,7 @@ impl State {
             (State::RcptTo, _) => State::Failed,
             (State::Data, Event::EndOfFile { buf: _ }) => State::Done,
             (State::Data, _) => State::Failed,
+            (_, Event::Fail { msg: _ }) => State::Failed,
             (_, Event::Quit) => State::Quit,
             (_, Event::Reset) => State::Quit,
             (_, _) => State::Quit,
@@ -127,8 +130,23 @@ impl State {
             }
         // If we're not receive DATA, we just read a one-line command
         } else {
-            stream.read_line(&mut buf).await.unwrap();
-            debug!("read SMTP command: {}, (len: {})", buf.trim(), buf.len());
+            match stream.read_line(&mut buf).await {
+                Ok(_) => {
+                    debug!(
+                        "read SMTP command: {}, (len: {})",
+                        buf.trim(),
+                        buf.len()
+                    );
+                }
+                Err(_) => {
+                    return Event::Fail {
+                        msg: format!(
+                            "Invalid Command: {}",
+                            buf.get(..std::cmp::max(20, buf.len())).unwrap()
+                        ),
+                    }
+                }
+            }
         }
 
         // We return which event has happened so the state machine can figure
@@ -138,8 +156,19 @@ impl State {
             return Event::Quit;
         }
 
-        match &buf[..4] {
+        // SMTP clients shouldn't unilaterally request TLS without being
+        // explicitly told ESMTP and STARTTLS is fair game, but some are
+        // pretty cheeky, so
+        if buf.len() >= 8 && buf[..8].eq_ignore_ascii_case("STARTTLS") {
+            State::send_command(stream, "454 TLSTOOHARDTOIMPL").await;
+            buf.clear();
+            stream.read_line(&mut buf).await.unwrap();
+        }
+
+        let command = buf.split(' ').next().unwrap().to_ascii_uppercase();
+        match command.trim() {
             "EHLO" | "HELO" => Event::Greeting,
+            "STARTTLS" => Event::NoTls,
             "MAIL" => Event::MailFrom,
             "RCPT" => Event::Recipient { recipient: buf },
             "DATA" => Event::Data,
@@ -148,7 +177,7 @@ impl State {
             _ => match *self {
                 State::Done | State::Quit => Event::Quit,
                 _ => Event::Fail {
-                    msg: format!("Wrong command: {}", &buf[..4]),
+                    msg: format!("Wrong command: {}", command.trim()),
                 },
             },
         }

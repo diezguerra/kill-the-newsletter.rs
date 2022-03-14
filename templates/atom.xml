@@ -17,7 +17,7 @@
     {{ feed_reference }}@{{ email_domain }} →
     {{ web_url }}/feeds/{{ feed_reference }}.xml
 </subtitle >
-<!-- <updated>{{ feed_title }}</updated> (was updated_at) -->
+<updated>{{ entries[0].created_at|rfc3339 }}</updated>
 <author><name>Kill the Newsletter!</name></author>
 {% for entry in entries %}
     <entry>

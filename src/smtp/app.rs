@@ -10,7 +10,7 @@ use std::error::Error;
 use std::sync::Arc;
 use tokio::io::BufReader;
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, error};
+use tracing::{debug, error, info};
 
 use crate::database::get_db_pool;
 use crate::models::Entry;
@@ -37,8 +37,8 @@ pub async fn serve_smtp(listener: &TcpListener) -> Result<(), Box<dyn Error>> {
         let pool = pool_arc.clone();
         tokio::spawn(async move {
             match serve_smtp_request(&mut socket, pool).await {
-                Ok(_) => debug!("SMTP request succeeded!"),
-                Err(e) => error!("SMTP response failed: {:#?}", e),
+                Ok(msg) => info!("{}", msg),
+                Err(e) => error!("{}", e),
             }
         });
     }
@@ -47,7 +47,7 @@ pub async fn serve_smtp(listener: &TcpListener) -> Result<(), Box<dyn Error>> {
 async fn serve_smtp_request(
     stream: &mut TcpStream,
     pool: Arc<r2d2::Pool<SqliteConnectionManager>>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<String, Box<dyn Error>> {
     let mut stream = BufReader::new(stream);
 
     let mut state = State::Connected;
@@ -82,27 +82,40 @@ async fn serve_smtp_request(
     debug!("Received email for {}", recipient);
 
     let parsed: ParsedEmail = parse(email.as_bytes());
+    let received = Entry {
+        id: 0, // this won't be used
+        created_at: parsed.date,
+        reference: parsed.to.split('@').next().unwrap_or("").to_owned(),
+        title: parsed.subject,
+        author: parsed.from,
+        content: parsed.body,
+    };
 
-    if !recipient.ends_with(EMAIL_DOMAIN) && !parsed.to.ends_with(EMAIL_DOMAIN)
+    if !(recipient.ends_with(EMAIL_DOMAIN) || parsed.to.ends_with(EMAIL_DOMAIN))
     {
         debug!("Received invalid inbox, discard message");
+        Err(format!(
+            "Email for {} received and discarded. Parsed entry: {}",
+            recipient, received
+        )
+        .into())
     } else {
         // Store in DB
-        debug!("Storing email {}", parsed);
+        debug!("Storing email to {} as {}", recipient, received);
 
-        let received = Entry {
-            id: 0, // this won't be used
-            created_at: parsed.date,
-            reference: parsed.to.split('@').next().unwrap_or("").to_owned(),
-            title: parsed.subject,
-            author: parsed.from,
-            content: parsed.body,
-        };
-
-        let mut conn = pool.get().expect("Couldn't get database connection");
-        received.save(&mut conn).expect("Couldn't save entry");
-        debug!("Saved entry!");
+        if let Ok(mut conn) = pool.get() {
+            match received.save(&mut conn) {
+                Ok(_) => {
+                    debug!("Saved entry!");
+                    Ok(format!(
+                        "Email for {} received and stored as {}",
+                        recipient, received
+                    ))
+                }
+                Err(_) => Err("Couldn't save entry".into()),
+            }
+        } else {
+            Err("Couldn't get database connection".into())
+        }
     }
-
-    Ok(())
 }

@@ -29,7 +29,7 @@ impl IntoResponse for KtnError {
 
         let status = match self {
             KtnError::NotFoundError => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
+            KtnError::InternalServerError => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
         Response::builder().status(status).body(body).unwrap()

@@ -2,13 +2,17 @@
 
 use axum::{
     extract::Extension,
-    response::Redirect,
     routing::{get, post},
     Router,
 };
 use r2d2_sqlite::SqliteConnectionManager;
 use std::sync::Arc;
-use tower_http::trace::TraceLayer;
+use tower_http::trace::{
+    DefaultMakeSpan, DefaultOnFailure, DefaultOnRequest, DefaultOnResponse,
+    TraceLayer,
+};
+use tower_http::LatencyUnit;
+use tracing::Level;
 
 use crate::web::{handlers, serve_static};
 
@@ -18,16 +22,24 @@ pub fn build_app(
     Router::new()
         .route("/", get(handlers::get_index))
         .route("/", post(handlers::create_feed))
-        .route(
-            "/favicon.ico",
-            get(|| async {
-                Redirect::permanent("/static/favicon.ico".parse().unwrap())
-            }),
-        )
-        .route("/:reference", get(handlers::get_feed_created))
         .route("/feeds/:reference", get(handlers::get_feed))
+        .route("/:reference", get(serve_static::handler))
         .nest("/static", get(serve_static::handler))
         .layer(Extension(pool_arc))
-        .layer(TraceLayer::new_for_http())
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(DefaultMakeSpan::new().include_headers(false))
+                .on_request(DefaultOnRequest::new().level(Level::INFO))
+                .on_response(
+                    DefaultOnResponse::new()
+                        .level(Level::INFO)
+                        .latency_unit(LatencyUnit::Micros),
+                )
+                .on_failure(
+                    DefaultOnFailure::new()
+                        .level(Level::INFO)
+                        .latency_unit(LatencyUnit::Micros),
+                ),
+        )
         .into_make_service()
 }

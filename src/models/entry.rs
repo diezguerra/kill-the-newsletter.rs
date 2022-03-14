@@ -27,6 +27,16 @@ pub struct Entry {
     pub content: String,
 }
 
+impl std::fmt::Display for Entry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            r#"Entry(from="{}", title="{}", date="{}")"#,
+            &self.author, &self.title, &self.created_at
+        )
+    }
+}
+
 impl Entry {
     /// Returns all [`Entry`] records for a given [`Feed`] reference
     pub fn find_by_reference(
@@ -35,7 +45,7 @@ impl Entry {
     ) -> Result<Vec<Entry>, rusqlite::Error> {
         let mut stmt = conn.prepare(
             r#"SELECT id, created_at, reference, title, author, content FROM entries
-            WHERE reference = ?1"#,
+            WHERE reference = ?1 ORDER BY created_at DESC"#,
         )?;
         let entries_iter = stmt.query_map(params![reference], |row| {
             Ok(Entry {

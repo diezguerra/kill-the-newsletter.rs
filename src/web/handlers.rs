@@ -7,7 +7,7 @@ use axum::{
 };
 use r2d2_sqlite::SqliteConnectionManager;
 use std::sync::Arc;
-use tracing::error;
+use tracing::*;
 
 use crate::models::{Entry, Feed, FeedAtomTemplate, NewFeed};
 use crate::vars::{EMAIL_DOMAIN, WEB_URL};
@@ -25,59 +25,71 @@ pub async fn create_feed(
     };
     let reference: String = form.save(&mut conn);
 
-    Redirect::to(format!("/{}", reference).parse().unwrap())
-}
-
-pub async fn get_feed_created(
-    Path(reference): Path<String>,
-    Extension(pool_arc): Extension<Arc<r2d2::Pool<SqliteConnectionManager>>>,
-) -> Result<impl IntoResponse, KtnError> {
-    let mut conn = pool_arc.get().expect("Couldn't get database connection");
-
-    let title = Feed::get_title_given_reference(&reference, &mut conn);
-    if let Err(rusqlite::Error::QueryReturnedNoRows) = title {
-        error!(
-            concat!(
-                "web::handlers::get_feed_created couldn't ",
-                "get_title_given_reference  \"{}\""
-            ),
-            &reference
-        );
-        return Err(KtnError::NotFoundError);
-    }
-
-    let feed = NewFeed {
-        reference: Some(reference),
-        title: title.unwrap(),
-    };
-
-    let template = feed
-        .created_template()
-        .render()
-        .unwrap_or_else(|_| String::from("Couldn't render Atom feed template"));
-
-    Ok(Response::builder()
-        .status(StatusCode::OK)
-        .header(
-            http::header::CONTENT_TYPE,
-            http::HeaderValue::from_static("text/html; charset=utf-8"),
-        )
-        .body(body::boxed(body::Full::from(template)))
-        .unwrap())
+    Redirect::to(format!("/feeds/{}.html", reference).parse().unwrap())
 }
 
 pub async fn get_feed(
     Path(reference): Path<String>,
     Extension(pool_arc): Extension<Arc<r2d2::Pool<SqliteConnectionManager>>>,
 ) -> Result<impl IntoResponse, KtnError> {
+    match reference {
+        rr if reference.ends_with(".html") => {
+            get_feed_html(Path(rr), Extension(pool_arc)).await
+        }
+        rr if reference.ends_with(".xml") => {
+            get_feed_xml(Path(rr), Extension(pool_arc)).await
+        }
+        _ => Err(KtnError::NotFoundError),
+    }
+}
+
+pub async fn get_feed_html(
+    Path(reference): Path<String>,
+    Extension(pool_arc): Extension<Arc<r2d2::Pool<SqliteConnectionManager>>>,
+) -> Result<Response, KtnError> {
     let mut conn = pool_arc.get().expect("Couldn't get database connection");
 
-    let no_ext: &str = &reference[..reference.len() - 4];
-    let entries = match Entry::find_by_reference(no_ext, &mut conn) {
-        Ok(entries) => entries,
-        Err(_) => return Err(KtnError::InternalServerError),
+    let no_ext: &str = reference.split(".html").next().unwrap();
+    let title = Feed::get_title_given_reference(no_ext, &mut conn);
+    if let Err(rusqlite::Error::QueryReturnedNoRows) = title {
+        debug!("No Feed with reference \"{}\" found.", no_ext);
+        return Err(KtnError::NotFoundError);
+    }
+
+    let feed = NewFeed {
+        reference: Some(no_ext.to_owned()),
+        title: title.unwrap(),
     };
 
+    let template = feed.created_template().render();
+
+    match template {
+        Ok(template) => Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header(
+                http::header::CONTENT_TYPE,
+                http::HeaderValue::from_static("text/html; charset=utf-8"),
+            )
+            .body(body::boxed(body::Full::from(template)))
+            .unwrap()),
+        _ => Err(KtnError::InternalServerError),
+    }
+}
+
+pub async fn get_feed_xml(
+    Path(reference): Path<String>,
+    Extension(pool_arc): Extension<Arc<r2d2::Pool<SqliteConnectionManager>>>,
+) -> Result<Response, KtnError> {
+    let mut conn = pool_arc.get().expect("Couldn't get database connection");
+
+    let no_ext: &str = reference.split(".xml").next().unwrap();
+    let entries = match Entry::find_by_reference(no_ext, &mut conn) {
+        Ok(entries) => entries,
+        Err(_) => return Err(KtnError::NotFoundError),
+    };
+
+    // Since we create "Sentinel" entries on Feed creation, this should never
+    // be reached, but just in case.
     if entries.is_empty() {
         return Err(KtnError::NotFoundError);
     }
@@ -94,19 +106,21 @@ pub async fn get_feed(
         feed_reference: no_ext.to_owned(),
         entries,
     }
-    .render()
-    .unwrap_or_else(|_| String::from("Couldn't render created feed template"));
+    .render();
 
-    Ok(Response::builder()
-        .status(StatusCode::OK)
-        .header(
-            http::header::CONTENT_TYPE,
-            http::HeaderValue::from_static(
-                "application/atom+xml; charset=utf-8",
-            ),
-        )
-        .body(body::boxed(body::Full::from(template)))
-        .unwrap())
+    match template {
+        Ok(template) => Ok(Response::builder()
+            .status(StatusCode::OK)
+            .header(
+                http::header::CONTENT_TYPE,
+                http::HeaderValue::from_static(
+                    "application/atom+xml; charset=utf-8",
+                ),
+            )
+            .body(body::boxed(body::Full::from(template)))
+            .unwrap()),
+        _ => Err(KtnError::InternalServerError),
+    }
 }
 
 pub async fn get_index() -> impl IntoResponse {
