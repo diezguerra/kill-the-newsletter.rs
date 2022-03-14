@@ -127,7 +127,7 @@ impl State {
                     }
                 }
             }
-        // If we're not receive DATA, we just read a one-line command
+            // If we're not receiving DATA, we just read a one-line command
         } else {
             match stream.read_line(&mut buf).await {
                 Ok(_) => {
@@ -136,19 +136,23 @@ impl State {
                         buf.trim(),
                         buf.len()
                     );
-                    // No command (TCP healthcheck)
-                    if buf.trim().is_empty() && *self == State::Connected {
-                        return Event::HealthCheck;
-                    }
                 }
                 Err(_) => {
-                    return Event::Fail {
-                        msg: format!(
-                            "Invalid Command: {}",
-                            buf.get(..std::cmp::max(20, buf.len())).unwrap()
-                        ),
+                    if !buf.is_empty() {
+                        return Event::Fail {
+                            msg: format!(
+                                "Invalid Command: {}",
+                                buf.get(..std::cmp::max(20, buf.len()))
+                                    .unwrap()
+                            ),
+                        };
                     }
                 }
+            }
+
+            // No command (TCP healthcheck)
+            if buf.trim().is_empty() {
+                return Event::HealthCheck;
             }
         }
 
