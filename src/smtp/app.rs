@@ -29,6 +29,11 @@ const EMAIL_REGEX: &str = concat!(
     r#"\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])"#
 );
 
+struct Email {
+    rcpt: String,
+    body: String,
+}
+
 pub async fn serve_smtp(listener: &TcpListener) -> Result<(), Box<dyn Error>> {
     let pool_arc = get_db_pool();
 
@@ -37,7 +42,11 @@ pub async fn serve_smtp(listener: &TcpListener) -> Result<(), Box<dyn Error>> {
         let pool = pool_arc.clone();
         tokio::spawn(async move {
             match serve_smtp_request(&mut socket, pool).await {
-                Ok(msg) => info!("{}", msg),
+                Ok(msg) => {
+                    if !msg.starts_with("Health check") {
+                        info!("{}", msg)
+                    }
+                }
                 Err(e) => error!("{}", e),
             }
         });
@@ -52,20 +61,21 @@ async fn serve_smtp_request(
 
     let mut state = State::Connected;
 
-    let mut recipient = String::new();
-    let mut email = String::new();
+    let mut email = Email {
+        rcpt: String::new(),
+        body: String::new(),
+    };
 
     loop {
         let event: Event = state.run(&mut stream).await;
         state = state.next(&event);
         match event {
-            Event::Recipient { recipient: rcpt } => {
-                debug!("RCPT TO={}", rcpt.trim());
-                recipient.push_str(rcpt.trim());
+            Event::HealthCheck => return Ok("Health check passed".to_owned()),
+            Event::Recipient { rcpt } => {
+                email.rcpt.push_str(rcpt.trim());
             }
             Event::EndOfFile { buf } => {
-                //debug!("DATA={}", buf.trim());
-                email.push_str(buf.trim());
+                email.body.push_str(buf.trim());
             }
             Event::Fail { msg } => return Err(msg.into()),
             Event::Quit => break,
@@ -73,15 +83,19 @@ async fn serve_smtp_request(
         }
     }
 
+    if email.rcpt.is_empty() || email.body.is_empty() {
+        return Ok("Empty envelope received and discarded".to_owned());
+    }
+
     let email_find = Regex::new(EMAIL_REGEX).unwrap();
-    let recipient = match email_find.find(&recipient) {
+    let recipient = match email_find.find(&email.rcpt) {
         Some(m) => m.as_str(),
         _ => "invalid@email.address",
     };
 
     debug!("Received email for {}", recipient);
 
-    let parsed: ParsedEmail = parse(email.as_bytes());
+    let parsed: ParsedEmail = parse(email.body.as_bytes());
     let received = Entry {
         id: 0, // this won't be used
         created_at: parsed.date,
@@ -93,29 +107,30 @@ async fn serve_smtp_request(
 
     if !(recipient.ends_with(EMAIL_DOMAIN) || parsed.to.ends_with(EMAIL_DOMAIN))
     {
-        debug!("Received invalid inbox, discard message");
-        Err(format!(
+        Ok(format!(
             "Email for {} received and discarded. Parsed entry: {}",
             recipient, received
-        )
-        .into())
+        ))
     } else {
         // Store in DB
-        debug!("Storing email to {} as {}", recipient, received);
-
         if let Ok(mut conn) = pool.get() {
             match received.save(&mut conn) {
-                Ok(_) => {
-                    debug!("Saved entry!");
-                    Ok(format!(
-                        "Email for {} received and stored as {}",
-                        recipient, received
-                    ))
-                }
-                Err(_) => Err("Couldn't save entry".into()),
+                Ok(_) => Ok(format!(
+                    "Email for {} received and stored as {}",
+                    recipient, received
+                )),
+                Err(_) => Err(format!(
+                    "Couldn't INSERT email for {} {}",
+                    recipient, received
+                )
+                .into()),
             }
         } else {
-            Err("Couldn't get database connection".into())
+            Err(format!(
+                "Couldn't get DB connection, dropping email for {} {}",
+                recipient, received
+            )
+            .into())
         }
     }
 }
