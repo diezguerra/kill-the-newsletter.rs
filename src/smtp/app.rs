@@ -77,7 +77,7 @@ async fn serve_smtp_request(
             Event::EndOfFile { buf } => {
                 email.body.push_str(buf.trim());
             }
-            Event::Fail { msg } => return Err(msg.into()),
+            Event::Fail { cmd } => return Err(cmd.into()),
             Event::Quit => break,
             _ => {}
         }

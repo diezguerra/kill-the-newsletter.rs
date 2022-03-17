@@ -29,7 +29,7 @@ pub enum Event {
     Data,
     EndOfFile { buf: String },
     Reset,
-    Fail { msg: String },
+    Fail { cmd: String },
     Quit,
 }
 
@@ -38,6 +38,7 @@ impl State {
         match (self, event) {
             (State::Connected, Event::Greeting) => State::Greeted,
             (state, Event::NoTls) => state,
+            (state, Event::HealthCheck) => state,
             (State::Connected, _) => State::Failed,
             (State::Greeted, Event::MailFrom) => State::MailFrom,
             (State::Greeted, _) => State::Failed,
@@ -47,7 +48,7 @@ impl State {
             (State::RcptTo, _) => State::Failed,
             (State::Data, Event::EndOfFile { buf: _ }) => State::Done,
             (State::Data, _) => State::Failed,
-            (_, Event::Fail { msg: _ }) => State::Failed,
+            (_, Event::Fail { cmd: _ }) => State::Failed,
             (_, Event::Quit) => State::Quit,
             (_, Event::Reset) => State::Quit,
             (_, _) => State::Quit,
@@ -80,11 +81,8 @@ impl State {
                 State::send_command(stream, "354 DALEMAMBO").await;
             }
             State::Failed => {
-                debug!("Failed Event, QUITting {:#?}", *self);
-                State::send_command(stream, "QUIT ").await;
-                return Event::Fail {
-                    msg: "Wrong command order".to_owned(),
-                };
+                debug!("Failed Event {:#?}", *self);
+                State::send_command(stream, "502 NOHABLA").await;
             }
             State::Done => {
                 debug!("Responding OK & QUIT from {:#?}", *self);
@@ -114,12 +112,6 @@ impl State {
                         debug!("Found the escape seq, returning buffer");
                         return Event::EndOfFile { buf };
                     }
-                    "" => {
-                        debug!("Broken Pipe?");
-                        return Event::Fail {
-                            msg: "Broken pipe".to_owned(),
-                        };
-                    }
                     _ => {
                         //debug!("Collected line, continuing");
                         buf.push_str(&loop_buf);
@@ -140,11 +132,10 @@ impl State {
                 Err(_) => {
                     if !buf.is_empty() {
                         return Event::Fail {
-                            msg: format!(
-                                "Invalid Command: {}",
-                                buf.get(..std::cmp::max(20, buf.len()))
-                                    .unwrap()
-                            ),
+                            cmd: buf
+                                .get(..std::cmp::max(20, buf.len()))
+                                .unwrap()
+                                .to_owned(),
                         };
                     }
                 }
@@ -152,6 +143,7 @@ impl State {
 
             // No command (TCP healthcheck)
             if buf.trim().is_empty() {
+                State::send_command(stream, "501 PINTAME").await;
                 return Event::HealthCheck;
             }
         }
@@ -177,7 +169,7 @@ impl State {
             _ => match *self {
                 State::Done | State::Quit => Event::Quit,
                 _ => Event::Fail {
-                    msg: format!("Invalid command: {}", command.trim()),
+                    cmd: command.trim().to_owned(),
                 },
             },
         }
