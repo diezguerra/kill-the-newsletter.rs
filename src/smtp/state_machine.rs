@@ -30,6 +30,7 @@ pub enum Event {
     EndOfFile { buf: String },
     Reset,
     Fail { cmd: String },
+    NoOp,
     Quit,
 }
 
@@ -39,6 +40,7 @@ impl State {
             (State::Connected, Event::Greeting) => State::Greeted,
             (state, Event::NoTls) => state,
             (state, Event::HealthCheck) => state,
+            (state, Event::NoOp) => state,
             (State::Connected, _) => State::Failed,
             (State::Greeted, Event::MailFrom) => State::MailFrom,
             (State::Greeted, _) => State::Failed,
@@ -87,6 +89,7 @@ impl State {
             State::Done => {
                 debug!("Responding OK & QUIT from {:#?}", *self);
                 State::send_command(stream, "250 DULYNOTED").await;
+                return Event::Quit;
             }
             State::Quit => {
                 debug!("Responding OK & QUIT from {:#?}", *self);
@@ -104,18 +107,23 @@ impl State {
         // local one.
         if *self == State::Data {
             let mut loop_buf = String::new();
+            let mut loop_count: usize = 0;
 
             loop {
                 stream.read_line(&mut loop_buf).await.unwrap();
                 match loop_buf.as_str() {
                     ".\r\n" => {
-                        debug!("Found the escape seq, returning buffer");
+                        debug!(
+                            "ESC found, looped {} times for {} length buffer",
+                            loop_count,
+                            buf.len()
+                        );
                         return Event::EndOfFile { buf };
                     }
                     _ => {
-                        //debug!("Collected line, continuing");
                         buf.push_str(&loop_buf);
                         loop_buf.clear();
+                        loop_count += 1;
                     }
                 }
             }
@@ -164,6 +172,10 @@ impl State {
             "MAIL" => Event::MailFrom,
             "RCPT" => Event::Recipient { rcpt: buf },
             "DATA" => Event::Data,
+            "NOOP" => {
+                State::send_command(stream, "250 AGREED").await;
+                Event::NoOp
+            }
             "QUIT" => Event::Quit,
             "RSET" => Event::Reset,
             _ => match *self {
