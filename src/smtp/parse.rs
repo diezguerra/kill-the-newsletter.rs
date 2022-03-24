@@ -90,7 +90,7 @@ pub fn parse(email: &[u8]) -> ParsedEmail {
     )
     .to_string();
 
-    debug!("Date: {:#?}", date);
+    debug!("Parsed date: {:#?}", date);
 
     ParsedEmail {
         to,

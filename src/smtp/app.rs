@@ -83,7 +83,7 @@ async fn serve_smtp_request(
         }
     }
 
-    if email.rcpt.is_empty() || email.body.is_empty() {
+    if email.rcpt.is_empty() && email.body.is_empty() {
         return Ok("Empty envelope received and discarded".to_owned());
     }
 
@@ -96,10 +96,18 @@ async fn serve_smtp_request(
     debug!("Received email for {}", recipient);
 
     let parsed: ParsedEmail = parse(email.body.as_bytes());
+
+    let parsed_to = match email_find.find(&parsed.to) {
+        Some(m) => m.as_str(),
+        _ => "invalid@email.address",
+    };
+
+    debug!("Parsed envelope addressed to {}", parsed_to);
+
     let received = Entry {
         id: 0, // this won't be used
         created_at: parsed.date,
-        reference: parsed.to.split('@').next().unwrap_or("").to_owned(),
+        reference: parsed_to.split('@').next().unwrap_or("").to_owned(),
         title: parsed.subject,
         author: parsed.from,
         content: parsed.body,
@@ -119,9 +127,9 @@ async fn serve_smtp_request(
                     "Email for {} received and stored as {}",
                     recipient, received
                 )),
-                Err(_) => Err(format!(
-                    "Couldn't INSERT email for {} {}",
-                    recipient, received
+                Err(e) => Err(format!(
+                    "Couldn't INSERT email for {} {} ({})",
+                    recipient, received, e
                 )
                 .into()),
             }
