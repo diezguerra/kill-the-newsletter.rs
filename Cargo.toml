@@ -1,6 +1,6 @@
 [package]
 name = "ktn"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 
 [dependencies]
@@ -19,7 +19,14 @@ rusqlite = "0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0"
-tracing-subscriber = "0"
+tracing-appender = "0"
+tracing-subscriber = { version = "0", features = ["fmt", "env-filter"] }
+tracing-bunyan-formatter = "0"
+tracing-log = "0"
 tokio = { version = "1", features = ["full"] }
 tower = "0"
 tower-http = { version = "0", features = ["full"] }
+
+[features]
+tracing_json = []
+tracing_noansi = []

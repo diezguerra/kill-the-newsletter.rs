@@ -2,7 +2,7 @@ FROM rust:1.59 as builder
 WORKDIR /usr/src/ktn
 COPY . .
 RUN rm .env && mv .env.build .env
-RUN cargo install --path .
+RUN cargo install --features tracing_json --path .
 
 FROM debian:buster-slim
 RUN apt-get update && apt-get install -y sqlite3

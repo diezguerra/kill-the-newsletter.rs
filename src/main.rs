@@ -8,6 +8,7 @@ mod web;
 use crate::database::get_db_pool;
 use crate::smtp::app::serve_smtp;
 use crate::web::build_app;
+use ktn::tracing::setup_tracing;
 use std::net::{SocketAddr, SocketAddrV4};
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -15,7 +16,7 @@ use tracing::error;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    setup_tracing();
 
     let pool = get_db_pool();
 
