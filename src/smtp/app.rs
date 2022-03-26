@@ -10,7 +10,7 @@ use std::error::Error;
 use std::sync::Arc;
 use tokio::io::BufReader;
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
 use crate::database::get_db_pool;
 use crate::models::Entry;
@@ -41,19 +41,21 @@ pub async fn serve_smtp(listener: &TcpListener) -> Result<(), Box<dyn Error>> {
         let (mut socket, _) = listener.accept().await.unwrap();
         let pool = pool_arc.clone();
         tokio::spawn(async move {
-            match serve_smtp_request(&mut socket, pool).await {
+            match handle_smtp_request(&mut socket, pool).await {
                 Ok(msg) => {
-                    if !msg.starts_with("Health check") {
+                    if msg.starts_with("Health check") {
+                        trace!("{}", msg)
+                    } else {
                         info!("{}", msg)
                     }
                 }
-                Err(e) => error!("{}", e),
+                Err(e) => error!("SMTP Server Error: {}", e),
             }
         });
     }
 }
 
-async fn serve_smtp_request(
+async fn handle_smtp_request(
     stream: &mut TcpStream,
     pool: Arc<r2d2::Pool<SqliteConnectionManager>>,
 ) -> Result<String, Box<dyn Error>> {

@@ -14,21 +14,20 @@ pub enum State {
     MailFrom,
     RcptTo,
     Data,
-    Failed,
     Done,
+    Failed,
     Quit,
 }
 
 #[derive(Debug)]
 pub enum Event {
-    Greeting,
     HealthCheck,
+    Greeting,
     NoTls,
     MailFrom,
     Recipient { rcpt: String },
     Data,
     EndOfFile { buf: String },
-    Reset,
     Fail { cmd: String },
     NoOp,
     Quit,
@@ -52,7 +51,6 @@ impl State {
             (State::Data, _) => State::Failed,
             (_, Event::Fail { cmd: _ }) => State::Failed,
             (_, Event::Quit) => State::Quit,
-            (_, Event::Reset) => State::Quit,
             (_, _) => State::Quit,
         }
     }
@@ -64,6 +62,69 @@ impl State {
         let _ = stream
             .write_all(format!("{}\r\n", command).as_bytes())
             .await;
+    }
+
+    async fn read_line(
+        stream: &mut BufReader<&mut TcpStream>,
+        buf: &mut String,
+    ) -> Result<(), String> {
+        match stream.read_line(buf).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(format!(
+                "Line[:20]: {} Error: {} ",
+                buf.get(..std::cmp::min(20, buf.len())).unwrap().to_owned(),
+                e
+            )),
+        }
+    }
+
+    async fn recv_response(
+        &self,
+        stream: &mut BufReader<&mut TcpStream>,
+    ) -> Result<String, String> {
+        let mut buf = String::new();
+
+        match *self {
+            // If we're receiving data, we loop until we find the lone period
+            // character that signals EOF, or till the pipe is broken. As we
+            // loop, we push what we get into the main buffer and clear the
+            // local one.
+            State::Data => {
+                let mut loop_buf = String::new();
+                let mut loop_count: usize = 0;
+
+                loop {
+                    State::read_line(stream, &mut loop_buf).await?;
+
+                    match loop_buf.as_str() {
+                        ".\r\n" => {
+                            debug!(
+                                "ESC found, loops: {}, buffer len: {}",
+                                loop_count,
+                                buf.len()
+                            );
+                            break;
+                        }
+                        _ => {
+                            buf.push_str(&loop_buf);
+                            loop_buf.clear();
+                            loop_count += 1;
+                        }
+                    }
+                }
+            }
+            // If we're not receiving DATA, we just read a one-line command
+            _ => {
+                State::read_line(stream, &mut buf).await?;
+                debug!(
+                    "read SMTP command: {}, (len: {})",
+                    buf.trim(),
+                    buf.trim().len()
+                );
+            }
+        }
+
+        Ok(buf)
     }
 
     // We respond to the latest command based on the current State, then
@@ -83,8 +144,9 @@ impl State {
                 State::send_command(stream, "354 DALEMAMBO").await;
             }
             State::Failed => {
-                debug!("Failed Event {:#?}", *self);
+                debug!("Failed Event, State: {:#?}", *self);
                 State::send_command(stream, "502 NOHABLA").await;
+                return Event::Quit;
             }
             State::Done => {
                 debug!("Responding OK & QUIT from {:#?}", *self);
@@ -100,65 +162,23 @@ impl State {
         }
 
         let mut buf = String::new();
+        match self.recv_response(stream).await {
+            Ok(resp) => match *self {
+                State::Data => return Event::EndOfFile { buf: resp },
+                _ => buf.push_str(&resp),
+            },
+            Err(e) => return Event::Fail { cmd: e },
+        };
 
-        // If we're receiving data, we loop until we find the lone period
-        // character that signals EOF, or till the pipe is broken. As we
-        // loop, we push what we get into the main buffer and clear clear the
-        // local one.
-        if *self == State::Data {
-            let mut loop_buf = String::new();
-            let mut loop_count: usize = 0;
-
-            loop {
-                stream.read_line(&mut loop_buf).await.unwrap();
-                match loop_buf.as_str() {
-                    ".\r\n" => {
-                        debug!(
-                            "ESC found, looped {} times for {} length buffer",
-                            loop_count,
-                            buf.len()
-                        );
-                        return Event::EndOfFile { buf };
-                    }
-                    _ => {
-                        buf.push_str(&loop_buf);
-                        loop_buf.clear();
-                        loop_count += 1;
-                    }
-                }
-            }
-            // If we're not receiving DATA, we just read a one-line command
-        } else {
-            match stream.read_line(&mut buf).await {
-                Ok(_) => {
-                    debug!(
-                        "read SMTP command: {}, (len: {})",
-                        buf.trim(),
-                        buf.len()
-                    );
-                }
-                Err(_) => {
-                    if !buf.is_empty() {
-                        return Event::Fail {
-                            cmd: buf
-                                .get(..std::cmp::max(20, buf.len()))
-                                .unwrap()
-                                .to_owned(),
-                        };
-                    }
-                }
-            }
-
-            // No command (TCP healthcheck)
-            if buf.trim().is_empty() {
-                State::send_command(stream, "501 PINTAME").await;
-                return Event::HealthCheck;
-            }
+        // No command (TCP healthcheck)
+        if buf.trim().is_empty() {
+            State::send_command(stream, "501 PINTAME").await;
+            return Event::HealthCheck;
         }
 
         // SMTP clients shouldn't unilaterally request TLS without being
         // explicitly told ESMTP and STARTTLS is fair game, but some are
-        // pretty cheeky, so
+        // pretty cheeky, so:
         if buf.len() >= 8 && buf[..8].eq_ignore_ascii_case("STARTTLS") {
             State::send_command(stream, "454 TLSTOOHARDTOIMPL").await;
             buf.clear();
@@ -176,8 +196,7 @@ impl State {
                 State::send_command(stream, "250 AGREED").await;
                 Event::NoOp
             }
-            "QUIT" => Event::Quit,
-            "RSET" => Event::Reset,
+            "QUIT" | "RSET" => Event::Quit,
             _ => match *self {
                 State::Done | State::Quit => Event::Quit,
                 _ => Event::Fail {
