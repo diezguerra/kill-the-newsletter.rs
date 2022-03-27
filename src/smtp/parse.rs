@@ -6,9 +6,24 @@
 //! Some fun with Traits, for good measure.
 
 use mailparse::{dateparse, parse_mail, MailHeaderMap};
-use tracing::debug;
+use regex::Regex;
+use tracing::{debug, warn};
 
+use crate::models::Entry;
+use crate::smtp::app::Email;
 use crate::time::Epoch;
+use crate::vars::EMAIL_DOMAIN;
+
+// Yanked blindly from https://emailregex.com/
+const EMAIL_REGEX: &str = concat!(
+    r#"(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)"#,
+    r#"*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-"#,
+    r#"\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\"#,
+    r#".)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:25[0-5]|2[0-4][0-9]|[0"#,
+    r#"1]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z"#,
+    r#"0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|"#,
+    r#"\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])"#
+);
 
 /// Output struct for the SMTP server, containing all the goodies
 pub struct ParsedEmail {
@@ -40,7 +55,9 @@ impl std::fmt::Display for ParsedEmail {
     }
 }
 
-pub fn parse(email: &[u8]) -> ParsedEmail {
+/// Takes the slice of unsigned bytes that is the email DATA body and returns
+/// a parsed struct of type `ParsedEmail`
+fn parse_bytes_to_email(email: &[u8]) -> ParsedEmail {
     let parsed = parse_mail(email).unwrap();
 
     let subject = parsed
@@ -98,5 +115,53 @@ pub fn parse(email: &[u8]) -> ParsedEmail {
         subject,
         date,
         body,
+    }
+}
+
+impl TryFrom<Email> for Entry {
+    type Error = String;
+    fn try_from(envelope: Email) -> Result<Self, Self::Error> {
+        if envelope.rcpt.is_empty() && envelope.body.is_empty() {
+            warn!("Empty envelope received and discarded");
+            return Err("Empty envelope discarded".to_owned());
+        }
+
+        let email_find = Regex::new(EMAIL_REGEX).unwrap();
+        let recipient = match email_find.find(&envelope.rcpt) {
+            Some(m) => m.as_str(),
+            _ => "invalid@email.address",
+        };
+
+        debug!("Received email for {}", recipient);
+
+        let parsed: ParsedEmail =
+            parse_bytes_to_email(envelope.body.as_bytes());
+
+        let parsed_to = match email_find.find(&parsed.to) {
+            Some(m) => m.as_str(),
+            _ => "invalid@email.address",
+        };
+
+        debug!("Parsed envelope addressed to {}", parsed_to);
+
+        let received = Entry {
+            id: 0, // this won't be used
+            created_at: parsed.date,
+            reference: parsed_to.split('@').next().unwrap_or("").to_owned(),
+            title: parsed.subject,
+            author: parsed.from,
+            content: parsed.body,
+        };
+
+        if !(recipient.ends_with(EMAIL_DOMAIN)
+            || parsed.to.ends_with(EMAIL_DOMAIN))
+        {
+            Err(format!(
+                "Email for {} received and discarded. Parsed entry: {}",
+                recipient, received
+            ))
+        } else {
+            Ok(received)
+        }
     }
 }

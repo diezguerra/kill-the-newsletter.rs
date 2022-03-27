@@ -5,7 +5,9 @@
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
-use tracing::debug;
+use tracing::{debug, trace};
+
+use crate::smtp::app::{Email, SMTPResult};
 
 #[derive(Debug, PartialEq)]
 pub enum State {
@@ -129,7 +131,7 @@ impl State {
 
     // We respond to the latest command based on the current State, then
     // process the response and generate an event with or without payload
-    pub async fn run(&self, stream: &mut BufReader<&mut TcpStream>) -> Event {
+    async fn step(&self, stream: &mut BufReader<&mut TcpStream>) -> Event {
         match *self {
             State::Connected => {
                 debug!("Sending 220 READY");
@@ -204,5 +206,36 @@ impl State {
                 },
             },
         }
+    }
+
+    pub async fn run(
+        mut self,
+        stream: &mut BufReader<&mut TcpStream>,
+    ) -> Result<SMTPResult, String> {
+        let mut email = Email {
+            rcpt: String::new(),
+            body: String::new(),
+        };
+
+        loop {
+            let event: Event = self.step(stream).await;
+            self = self.next(&event);
+            match event {
+                Event::HealthCheck => {
+                    trace!("SMTP Health check");
+                    return Ok(SMTPResult::HealthCheck);
+                }
+                Event::Recipient { rcpt } => {
+                    email.rcpt.push_str(rcpt.trim());
+                }
+                Event::EndOfFile { buf } => {
+                    email.body.push_str(buf.trim());
+                }
+                Event::Fail { cmd } => return Err(cmd),
+                Event::Quit => break,
+                _ => {}
+            }
+        }
+        Ok(SMTPResult::Success { email: Some(email) })
     }
 }
