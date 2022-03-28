@@ -117,7 +117,7 @@ impl NewFeed {
         .fetch_one(pool)
         .await
         {
-            Ok((n_rows,)) if n_rows > 0 => { n_rows },
+            Ok((n_rows,)) if n_rows > 0 => n_rows,
             _ => {
                 debug!(
                     "Couldn't INSERT feed ref:{:?} title:{}",

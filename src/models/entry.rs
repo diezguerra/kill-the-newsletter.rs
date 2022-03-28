@@ -19,7 +19,7 @@ use tracing::debug;
 use crate::database::{DatabaseError, Pool};
 use crate::models::Feed;
 
-#[derive(Debug)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct Entry {
     pub id: i64,
     pub created_at: String,
@@ -45,12 +45,11 @@ impl Entry {
         reference: &str,
         pool: &Pool,
     ) -> Result<Vec<Entry>, sqlx::Error> {
-        Ok(sqlx::query_as!(
-            Entry,
+        Ok(sqlx::query_as::<_, Entry>(
             r#"SELECT id, created_at, reference, title, author, content
             FROM entries WHERE reference = $1 ORDER BY created_at DESC"#,
-            reference
         )
+        .bind(reference)
         .fetch_all(pool)
         .await?)
     }
