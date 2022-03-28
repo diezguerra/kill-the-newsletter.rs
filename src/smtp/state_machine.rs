@@ -8,6 +8,7 @@ use tokio::net::TcpStream;
 use tracing::{debug, trace};
 
 use crate::smtp::app::{Email, SMTPResult};
+use crate::vars::EMAIL_DOMAIN;
 
 #[derive(Debug, PartialEq)]
 pub enum State {
@@ -61,6 +62,7 @@ impl State {
         stream: &mut BufReader<&mut TcpStream>,
         command: &str,
     ) {
+        debug!("Send SMTP command: {}", command);
         let _ = stream
             .write_all(format!("{}\r\n", command).as_bytes())
             .await;
@@ -80,6 +82,7 @@ impl State {
         }
     }
 
+    #[tracing::instrument(skip_all)]
     async fn recv_response(
         &self,
         stream: &mut BufReader<&mut TcpStream>,
@@ -96,14 +99,21 @@ impl State {
                 let mut loop_count: usize = 0;
 
                 loop {
-                    State::read_line(stream, &mut loop_buf).await?;
+                    match State::read_line(stream, &mut loop_buf).await {
+                        Ok(()) => {}
+                        Err(e) => {
+                            debug!("Failure while reading email DATA");
+                            return Err(e);
+                        }
+                    };
 
                     match loop_buf.as_str() {
                         ".\r\n" => {
                             debug!(
-                                "ESC found, loops: {}, buffer len: {}",
+                                "ESC found. loops={}, len={}, trimmed={}",
                                 loop_count,
-                                buf.len()
+                                buf.len(),
+                                buf.trim().len()
                             );
                             break;
                         }
@@ -116,14 +126,7 @@ impl State {
                 }
             }
             // If we're not receiving DATA, we just read a one-line command
-            _ => {
-                State::read_line(stream, &mut buf).await?;
-                debug!(
-                    "read SMTP command: {}, (len: {})",
-                    buf.trim(),
-                    buf.trim().len()
-                );
-            }
+            _ => State::read_line(stream, &mut buf).await?,
         }
 
         Ok(buf)
@@ -131,32 +134,28 @@ impl State {
 
     // We respond to the latest command based on the current State, then
     // process the response and generate an event with or without payload
+    #[tracing::instrument(skip_all)]
     async fn step(&self, stream: &mut BufReader<&mut TcpStream>) -> Event {
         match *self {
             State::Connected => {
-                debug!("Sending 220 READY");
-                State::send_command(stream, "220 SHOWMEWHATCHAGOT").await;
+                State::send_command(stream, &format!("220 {}", EMAIL_DOMAIN))
+                    .await;
             }
             State::Greeted | State::MailFrom | State::RcptTo => {
-                debug!("Responding 250 OK to {:#?}", *self);
                 State::send_command(stream, "250 YEASURE").await;
             }
             State::Data => {
-                debug!("Responding 354 DALEMAMBO to {:#?}", *self);
                 State::send_command(stream, "354 DALEMAMBO").await;
             }
             State::Failed => {
-                debug!("Failed Event, State: {:#?}", *self);
                 State::send_command(stream, "502 NOHABLA").await;
                 return Event::Quit;
             }
             State::Done => {
-                debug!("Responding OK & QUIT from {:#?}", *self);
                 State::send_command(stream, "250 DULYNOTED").await;
                 return Event::Quit;
             }
             State::Quit => {
-                debug!("Responding OK & QUIT from {:#?}", *self);
                 State::send_command(stream, "250 BYEFELICIA").await;
                 State::send_command(stream, "QUIT ").await;
                 return Event::Quit;
@@ -177,6 +176,15 @@ impl State {
             State::send_command(stream, "501 PINTAME").await;
             return Event::HealthCheck;
         }
+
+        debug!(
+            "Read SMTP command: {} (len={},trimmed={})",
+            buf.trim(),
+            buf.len(),
+            buf.trim().len()
+        );
+
+        let mut buf = buf.trim().to_string();
 
         // SMTP clients shouldn't unilaterally request TLS without being
         // explicitly told ESMTP and STARTTLS is fair game, but some are
@@ -208,10 +216,15 @@ impl State {
         }
     }
 
+    #[tracing::instrument(skip_all, fields(peer))]
     pub async fn run(
         mut self,
         stream: &mut BufReader<&mut TcpStream>,
     ) -> Result<SMTPResult, String> {
+        tracing::Span::current().record(
+            "peer",
+            &&stream.get_ref().peer_addr().unwrap().to_string()[..],
+        );
         let mut email = Email {
             rcpt: String::new(),
             body: String::new(),
