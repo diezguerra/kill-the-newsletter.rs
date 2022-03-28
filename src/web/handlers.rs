@@ -5,39 +5,42 @@ use axum::{
     http::{self, StatusCode},
     response::{IntoResponse, Redirect, Response},
 };
-use r2d2_sqlite::SqliteConnectionManager;
-use std::sync::Arc;
-use tracing::*;
+use tracing::debug;
 
+use crate::database::Pool;
 use crate::models::{Entry, Feed, FeedAtomTemplate, NewFeed};
 use crate::vars::{EMAIL_DOMAIN, WEB_URL};
 use crate::web::errors::KtnError;
 
 pub async fn create_feed(
     form: Form<NewFeed>,
-    Extension(pool_arc): Extension<Arc<r2d2::Pool<SqliteConnectionManager>>>,
+    Extension(pool): Extension<Pool>,
 ) -> impl IntoResponse {
-    let mut conn = pool_arc.get().expect("Couldn't get database connection");
     println!("{:?}", form);
     let mut form = NewFeed {
         title: form.title.to_owned(),
         reference: form.reference.to_owned(),
     };
-    let reference: String = form.save(&mut conn);
+    let redir: String = match form.save(&pool).await {
+        Ok(reference) => {
+            format!("/feeds/{}.html", reference)
+        }
+        _ => "/500".to_owned(),
+    };
 
-    Redirect::to(format!("/feeds/{}.html", reference).parse().unwrap())
+    Redirect::to(redir.parse().unwrap())
 }
 
 pub async fn get_feed(
     Path(reference): Path<String>,
-    Extension(pool_arc): Extension<Arc<r2d2::Pool<SqliteConnectionManager>>>,
+    Extension(pool): Extension<Pool>,
 ) -> Result<impl IntoResponse, KtnError> {
     match reference {
         rr if reference.ends_with(".html") => {
-            get_feed_html(Path(rr), Extension(pool_arc)).await
+            get_feed_html(Path(rr), Extension(pool)).await
         }
         rr if reference.ends_with(".xml") => {
-            get_feed_xml(Path(rr), Extension(pool_arc)).await
+            get_feed_xml(Path(rr), Extension(pool)).await
         }
         _ => Err(KtnError::NotFoundError),
     }
@@ -45,20 +48,20 @@ pub async fn get_feed(
 
 pub async fn get_feed_html(
     Path(reference): Path<String>,
-    Extension(pool_arc): Extension<Arc<r2d2::Pool<SqliteConnectionManager>>>,
+    Extension(pool): Extension<Pool>,
 ) -> Result<Response, KtnError> {
-    let mut conn = pool_arc.get().expect("Couldn't get database connection");
-
     let no_ext: &str = reference.split(".html").next().unwrap();
-    let title = Feed::get_title_given_reference(no_ext, &mut conn);
-    if let Err(rusqlite::Error::QueryReturnedNoRows) = title {
-        debug!("No Feed with reference \"{}\" found.", no_ext);
-        return Err(KtnError::NotFoundError);
-    }
+    let title = match Feed::get_title_given_reference(no_ext, &pool).await {
+        Ok(t) => t,
+        _ => {
+            debug!("No Feed with reference \"{}\" found.", no_ext);
+            return Err(KtnError::NotFoundError);
+        }
+    };
 
     let feed = NewFeed {
         reference: Some(no_ext.to_owned()),
-        title: title.unwrap(),
+        title,
     };
 
     let template = feed.created_template().render();
@@ -78,12 +81,10 @@ pub async fn get_feed_html(
 
 pub async fn get_feed_xml(
     Path(reference): Path<String>,
-    Extension(pool_arc): Extension<Arc<r2d2::Pool<SqliteConnectionManager>>>,
+    Extension(pool): Extension<Pool>,
 ) -> Result<Response, KtnError> {
-    let mut conn = pool_arc.get().expect("Couldn't get database connection");
-
     let no_ext: &str = reference.split(".xml").next().unwrap();
-    let entries = match Entry::find_by_reference(no_ext, &mut conn) {
+    let entries = match Entry::find_by_reference(no_ext, &pool).await {
         Ok(entries) => entries,
         Err(_) => return Err(KtnError::NotFoundError),
     };
@@ -94,7 +95,7 @@ pub async fn get_feed_xml(
         return Err(KtnError::NotFoundError);
     }
 
-    let title = match Feed::get_title_given_reference(no_ext, &mut conn) {
+    let title = match Feed::get_title_given_reference(no_ext, &pool).await {
         Ok(title) => title,
         _ => String::from("No feed title found"),
     };

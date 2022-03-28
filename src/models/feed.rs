@@ -12,9 +12,11 @@
 
 use askama::Template;
 use rand::distributions::{Alphanumeric, DistString};
-use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use std::error::Error;
+use tracing::debug;
 
+use crate::database::{DatabaseError, Pool};
 use crate::vars::{EMAIL_DOMAIN, WEB_URL};
 
 /// A helper Struct to pass on to Axum so it can deserialize a form submission
@@ -39,29 +41,30 @@ pub struct Feed {
 
 impl Feed {
     /// Returns a [`Feed`]'s `title` given its `reference`.
-    pub fn get_title_given_reference(
+    pub async fn get_title_given_reference(
         reference: &str,
-        conn: &mut Connection,
-    ) -> Result<String, rusqlite::Error> {
-        let mut stmt =
-            conn.prepare(r#"SELECT title FROM feeds WHERE reference = ?1"#)?;
-        let row = stmt.query_row(params![reference], |row| row.get(0))?;
+        pool: &Pool,
+    ) -> Result<String, sqlx::Error> {
+        let (title,): (String,) =
+            sqlx::query_as("SELECT title FROM feeds WHERE reference = $1")
+                .bind(reference)
+                .fetch_one(pool)
+                .await?;
 
-        Ok(row)
+        Ok(title)
     }
 
     /// Checks whether a [`Feed`] exists given its `reference`.
-    pub fn feed_exists(
+    pub async fn feed_exists(
         reference: &str,
-        conn: &mut Connection,
-    ) -> Result<bool, rusqlite::Error> {
-        let feed_count: isize = conn
-            .query_row(
-                "SELECT count(id) FROM feeds WHERE reference = ?1",
-                params![reference],
-                |row| row.get(0),
-            )
-            .unwrap();
+        pool: &Pool,
+    ) -> Result<bool, sqlx::Error> {
+        let feed_count = sqlx::query_scalar(
+            "SELECT count(id) FROM feeds WHERE reference = $1",
+        )
+        .bind(reference)
+        .fetch_one(pool)
+        .await?;
 
         match feed_count {
             0 => Ok(false),
@@ -96,20 +99,33 @@ impl NewFeed {
             .to_lowercase()
     }
 
-    pub fn save(&mut self, conn: &mut Connection) -> String {
+    pub async fn save(
+        &mut self,
+        pool: &Pool,
+    ) -> Result<String, Box<dyn Error>> {
         let reference = self
             .reference
             .get_or_insert_with(NewFeed::new_reference)
             .to_owned();
 
-        conn.execute(
-            concat!(
-                r#"INSERT INTO "feeds" ("reference", "title") "#,
-                r#"VALUES (?1, ?2);"#
-            ),
-            params![self.reference.as_ref().unwrap(), self.title],
+        let _inserted: i32 = match sqlx::query_as(
+            r#"INSERT INTO "feeds" ("reference", "title") VALUES ($1, $2)
+            RETURNING id;"#,
         )
-        .expect("Couldn't insert feed!");
+        .bind(self.reference.as_ref().unwrap())
+        .bind(&self.title)
+        .fetch_one(pool)
+        .await
+        {
+            Ok((n_rows,)) if n_rows > 0 => { n_rows },
+            _ => {
+                debug!(
+                    "Couldn't INSERT feed ref:{:?} title:{}",
+                    &self.reference, &self.title
+                );
+                return Err(Box::new(DatabaseError::CouldNotInsert));
+            }
+        };
 
         let content = SentinelTemplate {
             email_domain: EMAIL_DOMAIN,
@@ -120,16 +136,29 @@ impl NewFeed {
         let content = content.render().unwrap();
 
         let entry_title = format!("{} inbox created!", self.title);
-        conn.execute(
-            concat!(
-                r#"INSERT INTO "entries" "#,
-                r#"("reference", "title", "author", "content") "#,
-                r#"VALUES (?1, ?2, ?3, ?4);"#
-            ),
-            params![reference, entry_title, "Kill The Newsletter", content],
-        )
-        .expect("Couldn't insert initial entry!");
-        reference
+
+        let (n_rows,): (i32,) = sqlx::query_as(concat!(
+            r#"INSERT INTO "entries" "#,
+            r#"("reference", "title", "author", "content") "#,
+            r#"VALUES ($1, $2, $3, $4) RETURNING id;"#
+        ))
+        .bind(self.reference.as_ref().unwrap())
+        .bind(entry_title)
+        .bind("Kill The Newsletter")
+        .bind(content)
+        .fetch_one(pool)
+        .await?;
+
+        match n_rows {
+            n_rows if n_rows > 0 => Ok(reference),
+            _ => {
+                debug!(
+                    "Couldn't INSERT entry ref:{:?} title:{}",
+                    &self.reference, &self.title
+                );
+                Err(Box::new(DatabaseError::CouldNotInsert))
+            }
+        }
     }
 
     pub fn created_template(&self) -> FeedCreatedTemplate {

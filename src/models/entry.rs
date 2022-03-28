@@ -13,9 +13,11 @@
  * ```
 */
 
-use crate::models::Feed;
-use rusqlite::{params, Connection};
 use std::error::Error;
+use tracing::debug;
+
+use crate::database::{DatabaseError, Pool};
+use crate::models::Feed;
 
 #[derive(Debug)]
 pub struct Entry {
@@ -39,36 +41,23 @@ impl std::fmt::Display for Entry {
 
 impl Entry {
     /// Returns all [`Entry`] records for a given [`Feed`] reference
-    pub fn find_by_reference(
+    pub async fn find_by_reference(
         reference: &str,
-        conn: &mut Connection,
-    ) -> Result<Vec<Entry>, rusqlite::Error> {
-        let mut stmt = conn.prepare(
-            r#"SELECT id, created_at, reference, title, author, content FROM entries
-            WHERE reference = ?1 ORDER BY created_at DESC"#,
-        )?;
-        let entries_iter = stmt.query_map(params![reference], |row| {
-            Ok(Entry {
-                id: row.get(0)?,
-                created_at: row.get(1)?,
-                reference: row.get(2)?,
-                title: row.get(3)?,
-                author: row.get(4)?,
-                content: row.get(5)?,
-            })
-        })?;
-
-        let mut entries = Vec::new();
-        for entry in entries_iter {
-            entries.push(entry?);
-        }
-
-        Ok(entries)
+        pool: &Pool,
+    ) -> Result<Vec<Entry>, sqlx::Error> {
+        Ok(sqlx::query_as!(
+            Entry,
+            r#"SELECT id, created_at, reference, title, author, content
+            FROM entries WHERE reference = $1 ORDER BY created_at DESC"#,
+            reference
+        )
+        .fetch_all(pool)
+        .await?)
     }
 
     /// Saves the [`Entry`] to the database, unless the [`Feed`] doesn't exist.
-    pub fn save(&self, conn: &mut Connection) -> Result<(), Box<dyn Error>> {
-        if !Feed::feed_exists(&self.reference, conn)? {
+    pub async fn save(&self, pool: &Pool) -> Result<(), Box<dyn Error>> {
+        if !Feed::feed_exists(&self.reference, pool).await? {
             let err: Box<dyn Error> = format!(
                 "Tried saving Entry for Feed ref:{} which didn't exist",
                 &self.reference
@@ -77,23 +66,30 @@ impl Entry {
             return Err(err);
         }
 
-        conn.execute(
-            concat!(
-                r#"INSERT INTO "entries" "#,
-                r#"("reference", "title", "author", "content", "created_at") "#,
-                r#"VALUES (?1, ?2, ?3, ?4, ?5);"#
-            ),
-            params![
-                &self.reference,
-                &self.title,
-                // We don't need the address for display within the feed
-                &self.author.split('<').next().unwrap_or("").trim(),
-                &self.content,
-                &self.created_at
-            ],
+        let (n_rows,): (i32,) = sqlx::query_as(
+            r#"INSERT INTO "entries"
+                ("reference", "title", "author", "content", "created_at")
+                VALUES ($1, $2, $3, $4, $5) RETURNING changes();"#,
         )
-        .expect("Couldn't save entry in the DB!");
+        .bind(&self.reference)
+        .bind(&self.title)
+        // We don't need the address for display within the feed
+        .bind(&self.author.split('<').next().unwrap_or("").trim())
+        .bind(&self.content)
+        .bind(&self.created_at)
+        .fetch_one(pool)
+        .await?;
 
-        Ok(())
+        match n_rows {
+            n_rows if n_rows > 0 => Ok(()),
+            n_rows if n_rows == 0 => Ok(()),
+            _ => {
+                debug!(
+                    "Couldn't INSERT entry:{} for ref:{}",
+                    &self, &self.reference
+                );
+                Err(Box::new(DatabaseError::CouldNotInsert))
+            }
+        }
     }
 }
