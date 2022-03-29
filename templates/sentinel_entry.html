@@ -1,19 +1,23 @@
-<p><strong>“{{ title }}” inbox created</strong></p>
+<div class="flex flex-col text-center w-full mb-2">
+    <p><strong class="max-w-md mx-auto mt-2 text-gray-800">“{{ title }}” inbox created</strong></p>
 
-<p>
-    Sign up for the newsletter with<br />
-    <code class="copyable">{{ reference }}@{{ email_domain }}</code>
-</p>
-<p>
-    Subscribe to the Atom feed at<br />
-    <code class="copyable">{{ web_url }}/feeds/{{ reference }}.xml</code>
-</p>
-<p>
-    <strong>Don’t share these addresses.</strong><br />
-    They contain an identifier that other people could use
-    to send you spam and to control your newsletter subscriptions.
-</p>
-<p><strong>Enjoy your readings!</strong></p>
-<p>
-    <a href="{{ web_url }}/"><strong>Create another inbox</strong></a>
-</p>
+    <p class="mb-2">
+        Sign up for the newsletter with<br />
+        <code class="copyable">{{ reference }}@{{ email_domain }}</code>
+    </p>
+    <p class="mb-2">
+        Subscribe to the Atom feed at<br />
+        <code class="copyable">{{ web_url }}/feeds/{{ reference }}.xml</code>
+    </p>
+    <p class="mb-2">
+        <strong class="max-w-md mx-auto mt-2 text-gray-800">Don’t share these addresses.</strong><br />
+        They contain an identifier that other people could use<br />
+        to send you spam and to control your newsletter subscriptions.
+    </p>
+    <p><strong class="max-w-md mx-auto mt-2 text-black">Enjoy your readings!</strong></p>
+    <p class="mt-12 text-lg">
+        <a href="{{ web_url }}/">
+            <button class="px-4 py-2 text-lg tracking-wide text-white capitalize transform duration-200 bg-blue-700 rounded-md sm:mx-2 hover:bg-blue-600 focus:outline-none focus:bg-blue-600">Create another inbox</button>
+        </a>
+    </p>
+</div>

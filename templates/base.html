@@ -1,5 +1,6 @@
 <!DOCTYPE html>
-<html lang="en"><head>
+<html lang="en">
+  <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="generator" content="Kill the Newsletter! RS / 1.0.1">
@@ -7,149 +8,88 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
     <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <link href="/static/main.css" rel="stylesheet">
     <title>Kill the Newsletter!</title>
-<style>
-    body {
-          font-size: 0.875rem;
-          -webkit-text-size-adjust: 100%;
-          line-height: 1.5;
-          font-family: --apple-system, BlinkMacSystemFont, "Segoe UI",
-            Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans",
-            "Helvetica Neue", sans-serif;
-          max-width: 450px;
-          padding: 0 1rem;
-          margin: 1rem auto;
-          text-align: center;
-          overflow-wrap: break-word;
-    }
-
-    @media (prefers-color-scheme: dark) {
-        body {
-                color: #d4d4d4;
-                background-color: #1e1e1e
-        }
-    }
-
-    code {
-        font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo,
-        monospace;
-    }
-
-    h1 {
-        font-size: 1.3rem;
-    }
-
-    footer {
-        font-size: 0.75rem;
-    }
-
-    a {
-        color: inherit;
-        transition: color 0.2s;
-    }
-
-    a:hover {
-        color: #29adff;
-    }
-
-    h1 a,
-        footer a {
-        text-decoration: none;
-    }
-
-    input, button {
-        all: unset;
-        padding: 0.1rem 1rem;
-        border: 1px solid gainsboro;
-        border-radius: 5px;
-        box-shadow: inset 0 1px 1px #ffffff10, 0 1px 3px #00000010;
-        transition: border-color 0.2s;
-    }
-
-    @media (prefers-color-scheme: dark) {
-        input, button {
-            border-color: dimgray
-        }
-    }
-
-    @supports (-webkit-touch-callout: none) {
-        input, button {
-            font-size: 16px
-        }
-    }
-
-    input:focus, button:focus {
-        border-color: #29adff;
-    }
-
-    button {
-        background-color: white;
-    }
-
-    @media (prefers-color-scheme: dark) {
-        button {
-            background-color: #5a5a5a
-        }
-    }
-
-    button:active {
-        color: white;
-        background-color: #29adff;
-    }
-
-    @media (prefers-color-scheme: dark) {
-        .style--logo path {
-        fill: #d4d4d4;
-      }
-    }
-
-    .style--form {
-        max-width: 300px;
-        margin: 0 auto;
-    }
-
-    .style--form input,
-    .style--form button {
-        box-sizing: border-box;
-        width: 100%;
-    }
-  
-</style>
-</head>
+  </head>
   <body>
-    <header>
-      <h1>
-        <a href="{{ web_url }}/">Kill the Newsletter.rs!</a>
-      </h1>
-      <p>Convert email newsletters into Atom feeds</p>
-      <p
-        class="style--logo">
-        <svg width="176.031" height="52.959" viewBox="0 0 46.575 14.012" xmlns="http://www.w3.org/2000/svg">
-            <path d="M16.55.04H1.712C.768.04 0 .808 0 1.752v10.273c0 .944.768 1.712 1.712 1.712H16.55c.944 0 1.712-.768 1.712-1.712V1.752c0-.944-.768-1.712-1.712-1.712zm0 1.141c.078 0 .151.016.219.045L9.13 7.846l-7.638-6.62a.568.568 0 01.218-.045zm0 11.414H1.712a.571.571 0 01-.57-.57V2.43l7.615 6.6a.57.57 0 00.748 0l7.616-6.6v9.594c0 .315-.256.57-.57.57z"></path>
-            <path d="M35.98 9.14c-.742 0-1.346.604-1.346 1.346 0 .742.604 1.346 1.346 1.346s1.346-.604 1.346-1.346c0-.742-.604-1.346-1.346-1.346zm0 1.795a.45.45 0 11.001-.899.45.45 0 01-.001.899zM35.98 1.96c-.742 0-1.346.604-1.346 1.346s.604 1.346 1.346 1.346a5.839 5.839 0 015.832 5.832c0 .742.604 1.346 1.346 1.346.742 0 1.346-.604 1.346-1.346 0-4.7-3.824-8.524-8.524-8.524zm7.178 8.973a.45.45 0 01-.449-.449c0-3.71-3.018-6.73-6.729-6.73a.45.45 0 010-.897c4.205 0 7.627 3.422 7.627 7.627a.45.45 0 01-.449.449z"></path>
-            <path d="M35.98 5.55c-.742 0-1.346.604-1.346 1.346 0 .742.604 1.346 1.346 1.346a2.246 2.246 0 012.243 2.243c0 .742.604 1.346 1.346 1.346.742 0 1.346-.604 1.346-1.346A4.94 4.94 0 0035.98 5.55zm3.59 5.384a.45.45 0 01-.45-.449 3.144 3.144 0 00-3.14-3.14.45.45 0 010-.898 4.042 4.042 0 014.038 4.038.45.45 0 01-.449.449zM20.93 9.13h3.116v1.528A.382.382 0 0024.6 11l6.114-3.057a.382.382 0 000-.683l-6.114-3.057a.382.382 0 00-.553.342v1.528H20.93a.381.381 0 00-.382.382v2.293c0 .21.17.382.382.382zm.382-2.293h3.117a.382.382 0 00.382-.382V5.163l4.877 2.439-4.877 2.438V8.748a.382.382 0 00-.382-.382h-3.117z"></path>
-            <path d="M34.44 0a1.887 1.887 0 00-1.879 1.879v10.254c0 1.031.848 1.879 1.879 1.879h10.256a1.887 1.887 0 001.879-1.88V1.88A1.887 1.887 0 0044.696 0H34.44zm0 1.111h10.256c.435 0 .768.333.768.768v10.254a.754.754 0 01-.768.767H34.44a.754.754 0 01-.768-.767V1.879c0-.435.333-.768.768-.768z"></path>
-        </svg>
-      </p>
-    </header>
+    <section class="text-gray-600 body-font">
+      <div class="container px-5 py-24 mx-auto">
+        <div class="flex flex-col text-center w-full">
+        <a href="{{ web_url }}/">
+          <h1 class="text-base text-blue-700 font-semibold tracking-wide uppercase">Kill The Newsletter.rs</h1>
+          <p class="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">Convert email newsletters into Atom feeds</p>
+        </a>
+        </div>
+
+      </div>
+
+
+
+
+
+
+
     <main>{% block main %}{% endblock %}</main>
-    <footer>
-      <p>
-        Originally by <a href="https://leafac.com">Leandro Facchinetti</a> ·
-        Rustified by <a href="https://diezguerra.com">Saul Diez-Guerra</a><br />
-        <a href="https://patreon.com/leafac">Patreon</a>
-        <a href="https://paypal.me/LeandroFacchinetti">PayPal</a> ·
-        <a href="https://github.com/leafac/kill-the-newsletter.com">Source</a> ·
-        <a href="https://github.com/diezguerra/kill-the-newsletter.rs">Source.rs</a>
-      </p>
-    </footer>
+
+    <footer class="bg-white mt-24">
+      <div class="container px-6 py-8 mx-auto sm:w-full md:w-2/3 lg:w-1/2 xl:w-1/3">
+          <div class="grid gap-2 grid-cols-3">
+              <div>
+                  <div class="text-xs font-medium text-gray-400 uppercase">
+                      Original Idea By
+                  </div>
+
+                  <a href="https://leafac.com"
+                      class="block mt-5 text-sm font-medium text-gray-500 duration-700 hover:text-gray-400 hover:underline">
+                      Leandro Facchinetti
+                  </a>
+                  <a href="https://github.com/leafac/kill-the-newsletter.com"
+                      class="block mt-3 text-sm font-medium text-gray-500 duration-700 hover:text-gray-400 hover:underline">
+                      Source Code
+                  </a>
+                  <a href="https://patreon.com/leafac"
+                      class="block mt-3 text-sm font-medium text-gray-500 duration-700 hover:text-gray-400 hover:underline">
+                      Patreon
+                  </a>
+                  <a href="https://paypal.me/LeandroFacchinetti"
+                      class="block mt-3 text-sm font-medium text-gray-500 duration-700 hover:text-gray-400 hover:underline">
+                      PayPal
+                  </a>
+              </div>
+
+              <div>
+                  <div class="text-xs font-medium text-gray-400 uppercase">
+                      Rustified by
+                  </div>
+
+                  <a href="https://diezguerra.com"
+                      class="block mt-5 text-sm font-medium text-gray-500 duration-700 hover:text-gray-400 hover:underline">
+                      Saul Diez-Guerra
+                  </a>
+                  <a href="https://github.com/diezguerra/kill-the-newsletter.rs"
+                      class="block mt-3 text-sm font-medium text-gray-500 duration-700 hover:text-gray-400 hover:underline">
+                      Source Code
+                  </a>
+              </div>
+              <div></div>
+          </div>
+
+          <hr class="my-10 border-gray-200">
+
+          <div class="w-full">
+              <p class="text-sm text-gray-400 self-end">© Copyright 2022. All Rights Reserved.</p>
+          </div>
+      </div>
+  </footer>
+
     <script>
         for (const copyable of document.querySelectorAll(".copyable"))
           copyable.insertAdjacentHTML(
             "afterend",
             `<br />
-              <button
-                type="button"
+              <a
+                href=""
+                class="px-4 py-2 my-2 font-bold text-lg tracking-wide text-white capitalize transition-colors duration-200 transform text-blue-700 hover:text-blue-600 focus:outline-none focus:text-blue-600"
                 onclick="
                   (async () =&#x3E; {
                     await navigator.clipboard.writeText(&#x22;${copyable.textContent}&#x22;);
@@ -161,7 +101,7 @@
                 "
               >
                 Copy
-              </button>`
+              </a>`
           );
       </script>
       <script data-goatcounter="https://stats.ktnrs.com/count"

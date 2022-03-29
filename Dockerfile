@@ -1,3 +1,9 @@
+FROM node:buster as tailwind
+WORKDIR /usr/src/ktn
+COPY . .
+RUN npm install -g tailwindcss
+RUN npx tailwindcss -i ./templates/input.css -o ./static/main.css
+
 FROM rust:1.59-slim-buster as builder
 WORKDIR /usr/src/ktn
 COPY . .
@@ -10,6 +16,8 @@ RUN apt-get update && apt-get install -y sqlite3 libssl-dev
 COPY --from=builder /usr/local/cargo/bin/ktn /usr/local/bin/ktn
 RUN mkdir -p /usr/local/share/ktn/
 COPY static /usr/local/share/ktn/static
+COPY --from=tailwind /usr/src/ktn/static/main.css /usr/local/share/ktn/static/
+
 EXPOSE 8080
 EXPOSE 2525
 CMD ["ktn"]

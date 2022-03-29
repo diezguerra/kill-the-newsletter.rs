@@ -2,3 +2,4 @@
 target/
 *.db
 *.db-*
+static/*.css
