@@ -134,7 +134,6 @@ impl State {
 
     // We respond to the latest command based on the current State, then
     // process the response and generate an event with or without payload
-    #[tracing::instrument(skip_all)]
     async fn step(&self, stream: &mut BufReader<&mut TcpStream>) -> Event {
         match *self {
             State::Connected => {
@@ -168,7 +167,16 @@ impl State {
                 State::Data => return Event::EndOfFile { buf: resp },
                 _ => buf.push_str(&resp),
             },
-            Err(e) => return Event::Fail { cmd: e },
+            Err(e) => {
+                // Healthcheck so fast the pipe is closed by the time we read
+                if *self == State::Connected
+                    && e.contains("Connection reset by peer")
+                {
+                    return Event::HealthCheck;
+                } else {
+                    return Event::Fail { cmd: e };
+                }
+            }
         };
 
         // No command (TCP healthcheck)
