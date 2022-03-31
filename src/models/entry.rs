@@ -65,10 +65,11 @@ impl Entry {
             return Err(err);
         }
 
-        let (n_rows,): (i32,) = sqlx::query_as(
-            r#"INSERT INTO "entries"
+        let (n_rows,): (i64,) = sqlx::query_as(
+            r#"WITH inserted AS (INSERT INTO "entries"
                 ("reference", "title", "author", "content", "created_at")
-                VALUES ($1, $2, $3, $4, $5) RETURNING changes();"#,
+                VALUES ($1, $2, $3, $4, $5) RETURNING 1)
+                SELECT COUNT(*) FROM inserted;"#,
         )
         .bind(&self.reference)
         .bind(&self.title)

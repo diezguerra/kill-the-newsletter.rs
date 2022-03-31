@@ -59,7 +59,7 @@ impl Feed {
         reference: &str,
         pool: &Pool,
     ) -> Result<bool, sqlx::Error> {
-        let feed_count = sqlx::query_scalar(
+        let feed_count: i64 = sqlx::query_scalar(
             "SELECT count(id) FROM feeds WHERE reference = $1",
         )
         .bind(reference)
@@ -108,20 +108,27 @@ impl NewFeed {
             .get_or_insert_with(NewFeed::new_reference)
             .to_owned();
 
-        let _inserted: i32 = match sqlx::query_as(
-            r#"INSERT INTO "feeds" ("reference", "title") VALUES ($1, $2)
-            RETURNING id;"#,
+        let _inserted: i64 = match sqlx::query_as(
+            r#"WITH inserted AS (
+                INSERT INTO "feeds" ("reference", "title") VALUES ($1, $2)
+            RETURNING 1) SELECT COUNT(*) FROM inserted;"#,
         )
         .bind(self.reference.as_ref().unwrap())
         .bind(&self.title)
         .fetch_one(pool)
         .await
         {
-            Ok((n_rows,)) if n_rows > 0 => n_rows,
-            _ => {
+            Ok(tup) => {
+                if matches!(tup, (_inserted,)) && tup.0 > 0 {
+                    tup.0
+                } else {
+                    return Err(Box::new(DatabaseError::CouldNotInsert));
+                }
+            }
+            Err(e) => {
                 debug!(
-                    "Couldn't INSERT feed ref:{:?} title:{}",
-                    &self.reference, &self.title
+                    "Couldn't INSERT feed ref:{:?} title:{} ({})",
+                    &self.reference, &self.title, e
                 );
                 return Err(Box::new(DatabaseError::CouldNotInsert));
             }
@@ -137,10 +144,12 @@ impl NewFeed {
 
         let entry_title = format!("{} inbox created!", self.title);
 
-        let (n_rows,): (i32,) = sqlx::query_as(concat!(
-            r#"INSERT INTO "entries" "#,
-            r#"("reference", "title", "author", "content") "#,
-            r#"VALUES ($1, $2, $3, $4) RETURNING id;"#
+        let (n_rows,): (i64,) = sqlx::query_as(concat!(
+            r#"WITH inserted AS (
+                INSERT INTO "entries"
+                ("reference", "title", "author", "content")
+                VALUES ($1, $2, $3, $4) RETURNING 1)
+                SELECT count(*) FROM inserted;"#
         ))
         .bind(self.reference.as_ref().unwrap())
         .bind(entry_title)

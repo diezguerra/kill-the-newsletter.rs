@@ -1,7 +1,8 @@
-PRAGMA foreign_keys = ON;
+/* Only for SQLite
+ * PRAGMA foreign_keys = ON; */
 
 CREATE TABLE IF NOT EXISTS "feeds" (
-    "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+    "id" SERIAL,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "reference" TEXT NOT NULL UNIQUE,
@@ -9,7 +10,7 @@ CREATE TABLE IF NOT EXISTS "feeds" (
 );
 
 CREATE TABLE IF NOT EXISTS "entries" (
-    "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+    "id" SERIAL,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "reference" TEXT NOT NULL,
     "title" TEXT NOT NULL,
@@ -18,4 +19,5 @@ CREATE TABLE IF NOT EXISTS "entries" (
     FOREIGN KEY(reference) REFERENCES feeds(reference)
 );
 
-CREATE INDEX IF NOT EXISTS "entriesFeed" ON "entries" ("feed");
+CREATE INDEX IF NOT EXISTS "entriesRef" ON "entries" ("reference");
+CREATE INDEX IF NOT EXISTS "feedsRef" ON "entries" ("reference");

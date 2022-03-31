@@ -1,10 +1,10 @@
 //!  Thread-safe SQLite connection pool instatiation
-use sqlx::{Pool as SqlxPool, SqlitePool};
+use sqlx::{postgres::PgPoolOptions, Pool as SqlxPool};
 use thiserror::Error;
 
-use crate::vars::DB_FILE;
+use crate::vars::DATABASE_URL;
 
-pub type Pool = SqlxPool<sqlx::Sqlite>;
+pub type Pool = SqlxPool<sqlx::Postgres>;
 
 #[derive(Debug, Error)]
 pub enum DatabaseError {
@@ -13,7 +13,9 @@ pub enum DatabaseError {
 }
 
 pub async fn get_db_pool() -> Result<Pool, sqlx::Error> {
-    let pool = SqlitePool::connect(DB_FILE)
+    let pool = PgPoolOptions::new()
+        .max_connections(20)
+        .connect(DATABASE_URL)
         .await
         .expect("Couldn't connect to the DB");
 
