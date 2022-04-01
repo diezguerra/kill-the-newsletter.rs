@@ -28,7 +28,7 @@ pub async fn create_feed(
         _ => "/500".to_owned(),
     };
 
-    Redirect::to(redir.parse().unwrap())
+    Redirect::to(&redir)
 }
 
 pub async fn get_feed(
@@ -134,4 +134,6 @@ pub async fn get_index() -> impl IntoResponse {
     IndexTemplate {
         web_url: String::from(WEB_URL),
     }
+    .render()
+    .unwrap_or_else(|_| "Couldn't get index.html".to_owned())
 }
