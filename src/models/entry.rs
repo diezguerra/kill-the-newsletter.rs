@@ -21,7 +21,7 @@ use crate::models::Feed;
 
 #[derive(Debug, sqlx::FromRow)]
 pub struct Entry {
-    pub id: i64,
+    pub id: i32,
     pub created_at: String,
     pub reference: String,
     pub title: String,

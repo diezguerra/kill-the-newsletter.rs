@@ -131,9 +131,20 @@ pub async fn get_index() -> impl IntoResponse {
         pub web_url: String,
     }
 
-    IndexTemplate {
+    let template = IndexTemplate {
         web_url: String::from(WEB_URL),
-    }
-    .render()
-    .unwrap_or_else(|_| "Couldn't get index.html".to_owned())
+    };
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("text/html; charset=utf-8"),
+        )
+        .body(body::boxed(body::Full::from(
+            template
+                .render()
+                .unwrap_or_else(|_| "Couldn't render IndexTemplate".to_owned()),
+        )))
+        .unwrap()
 }

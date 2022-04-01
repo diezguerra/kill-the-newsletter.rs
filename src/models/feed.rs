@@ -29,7 +29,7 @@ pub struct NewFeed {
 /// Represents an individual feed and its related email address and title.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Feed {
-    pub id: i64,
+    pub id: i32,
     pub created_at: String,
     pub updated_at: String,
     /// The `reference` of a [`Feed`] is a randomly generated alphanumeric
