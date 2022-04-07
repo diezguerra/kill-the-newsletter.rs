@@ -1,2 +1,7 @@
 .git
 target
+*.sql
+*.lock
+*.db
+*.db-*
+static/*.css

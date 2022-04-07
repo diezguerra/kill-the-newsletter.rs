@@ -56,7 +56,3 @@ processes = []
     interval = "120s"
     restart_limit = 0
     timeout = "2s"
-
-[mounts]
-source="ktn_data"
-destination="/data"

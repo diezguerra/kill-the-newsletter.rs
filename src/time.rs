@@ -16,7 +16,8 @@ use chrono::{DateTime, NaiveDateTime, Utc};
 /// ```
 pub fn sqlite_datetime_to_rfc3339(date: &str) -> String {
     let dt: DateTime<Utc> = DateTime::from_utc(
-        NaiveDateTime::parse_from_str(date, "%Y-%m-%d %H:%M:%S").unwrap(),
+        NaiveDateTime::parse_from_str(&date[..19], "%Y-%m-%d %H:%M:%S")
+            .unwrap(),
         Utc,
     );
 
