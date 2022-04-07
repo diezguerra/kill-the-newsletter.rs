@@ -45,13 +45,13 @@ impl Entry {
         reference: &str,
         pool: &Pool,
     ) -> Result<Vec<Entry>, sqlx::Error> {
-        Ok(sqlx::query_as::<_, Entry>(
+        sqlx::query_as::<_, Entry>(
             r#"SELECT id, created_at, reference, title, author, content
             FROM entries WHERE reference = $1 ORDER BY created_at DESC"#,
         )
         .bind(reference)
         .fetch_all(pool)
-        .await?)
+        .await
     }
 
     /// Saves the [`Entry`] to the database, unless the [`Feed`] doesn't exist.
