@@ -141,21 +141,25 @@ impl State {
                     .await;
             }
             State::Greeted | State::MailFrom | State::RcptTo => {
-                State::send_command(stream, "250 YEASURE").await;
+                State::send_command(stream, "250 OK").await;
             }
             State::Data => {
-                State::send_command(stream, "354 DALEMAMBO").await;
+                State::send_command(
+                    stream,
+                    "354 End data with <CR><LF>.<CR><LF>",
+                )
+                .await;
             }
             State::Failed => {
-                State::send_command(stream, "502 NOHABLA").await;
+                State::send_command(stream, "502 Not Implemented").await;
                 return Event::Quit;
             }
             State::Done => {
-                State::send_command(stream, "250 DULYNOTED").await;
+                State::send_command(stream, "250 OK").await;
                 return Event::Quit;
             }
             State::Quit => {
-                State::send_command(stream, "250 BYEFELICIA").await;
+                State::send_command(stream, "250 OK").await;
                 State::send_command(stream, "QUIT ").await;
                 return Event::Quit;
             }
@@ -181,7 +185,7 @@ impl State {
 
         // No command (TCP healthcheck)
         if buf.trim().is_empty() {
-            State::send_command(stream, "501 PINTAME").await;
+            State::send_command(stream, "500 Command Unrecognized").await;
             return Event::HealthCheck;
         }
 
@@ -198,7 +202,7 @@ impl State {
         // explicitly told ESMTP and STARTTLS is fair game, but some are
         // pretty cheeky, so:
         if buf.len() >= 8 && buf[..8].eq_ignore_ascii_case("STARTTLS") {
-            State::send_command(stream, "454 TLSTOOHARDTOIMPL").await;
+            State::send_command(stream, "454 TLS Not available").await;
             buf.clear();
             stream.read_line(&mut buf).await.unwrap();
         }
@@ -211,7 +215,7 @@ impl State {
             "RCPT" => Event::Recipient { rcpt: buf },
             "DATA" => Event::Data,
             "NOOP" => {
-                State::send_command(stream, "250 AGREED").await;
+                State::send_command(stream, "250 OK").await;
                 Event::NoOp
             }
             "QUIT" | "RSET" => Event::Quit,
