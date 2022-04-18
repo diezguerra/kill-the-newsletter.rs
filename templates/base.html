@@ -87,21 +87,21 @@
           copyable.insertAdjacentHTML(
             "afterend",
             `<br />
-              <a
-                href=""
-                class="px-4 py-2 my-2 font-bold text-lg tracking-wide text-white capitalize transition-colors duration-200 transform text-blue-700 hover:text-blue-600 focus:outline-none focus:text-blue-600"
-                onclick="
-                  (async () =&#x3E; {
-                    await navigator.clipboard.writeText(&#x22;${copyable.textContent}&#x22;);
-                    const originalTextContent = this.textContent;
-                    this.textContent = &#x22;Copied&#x22;;
-                    await new Promise(resolve =&#x3E; window.setTimeout(resolve, 500));
-                    this.textContent = originalTextContent;
-                  })();
-                "
-              >
-                Copy
-              </a>`
+                <a
+                  href=""
+                  class="text-gray-800 font-bold py-2 px-4 transition-colors duration-200"
+                  onclick="
+                    (async () =&#x3E; {
+                      await navigator.clipboard.writeText(&#x22;${copyable.textContent}&#x22;);
+                      const originalTextContent = this.textContent;
+                      this.textContent = &#x22;&#x1F4CB;&nbsp;&nbsp;Copied!&#x22;;
+                      await new Promise(resolve =&#x3E; window.setTimeout(resolve, 1000));
+                      this.textContent = originalTextContent;
+                    })(); return false;
+                  "
+                >
+                &#x2702;&nbsp;&nbsp;Copy
+                </a>`
           );
       </script>
       <script data-goatcounter="https://stats.ktnrs.com/count"
