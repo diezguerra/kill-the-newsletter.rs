@@ -1,21 +1,13 @@
-use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
-use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::EnvFilter;
 
 pub fn setup_tracing() {
-    let app_name =
-        concat!(env!("CARGO_PKG_NAME"), "-", env!("CARGO_PKG_VERSION"))
-            .to_string();
-
-    let formatting_layer =
-        BunyanFormattingLayer::new(app_name, std::io::stdout);
-    let json_subs = tracing_subscriber::registry()
-        .with(
+    let json_subs = tracing_subscriber::fmt()
+        .json()
+        .with_env_filter(
             EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| EnvFilter::new("info")),
         )
-        .with(JsonStorageLayer)
-        .with(formatting_layer);
+        .finish();
 
     let mut fmt_subs = tracing_subscriber::fmt().with_env_filter(
         EnvFilter::try_from_default_env()
