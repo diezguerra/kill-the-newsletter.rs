@@ -1,5 +1,5 @@
 use axum::{
-    body,
+    body::Body,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
@@ -20,16 +20,14 @@ impl std::error::Error for KtnError {}
 
 impl IntoResponse for KtnError {
     fn into_response(self) -> Response {
-        let body = match self {
+        let (status, body) = match self {
             KtnError::NotFoundError => {
-                body::boxed(body::Full::from("Not Found"))
+                (StatusCode::NOT_FOUND, Body::from("Not Found"))
             }
-            _ => body::boxed(body::Full::from("Undertermined error")),
-        };
-
-        let status = match self {
-            KtnError::NotFoundError => StatusCode::NOT_FOUND,
-            KtnError::InternalServerError => StatusCode::INTERNAL_SERVER_ERROR,
+            KtnError::InternalServerError => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Body::from("Undetermined error"),
+            ),
         };
 
         Response::builder().status(status).body(body).unwrap()

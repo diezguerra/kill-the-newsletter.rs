@@ -17,9 +17,16 @@ use std::error::Error;
 use tracing::debug;
 
 use crate::database::{DatabaseError, Pool};
-use crate::vars::{EMAIL_DOMAIN, WEB_URL};
+use crate::vars::{email_domain, web_url};
 
-/// A helper Struct to pass on to Axum so it can deserialize a form submission
+/// Form input type — only contains fields submitted by the user.
+#[derive(Debug, Deserialize)]
+pub struct CreateFeedForm {
+    pub title: String,
+}
+
+/// Internal domain type used to create and render a new feed.
+/// `reference` is `None` before saving and `Some` after.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NewFeed {
     pub title: String,
@@ -54,42 +61,26 @@ impl Feed {
         Ok(title)
     }
 
-    /// Checks whether a [`Feed`] exists given its `reference`.
-    pub async fn feed_exists(
-        reference: &str,
-        pool: &Pool,
-    ) -> Result<bool, sqlx::Error> {
-        let feed_count: i64 = sqlx::query_scalar(
-            "SELECT count(id) FROM feeds WHERE reference = $1",
-        )
-        .bind(reference)
-        .fetch_one(pool)
-        .await?;
-
-        match feed_count {
-            0 => Ok(false),
-            _ => Ok(true),
-        }
-    }
 }
 
-#[derive(Template, Copy, Clone)]
+#[derive(Template, Clone)]
 #[template(path = "sentinel_entry.html", ext = "html")]
-pub struct SentinelTemplate<'a> {
-    pub email_domain: &'a str,
-    pub reference: &'a str,
-    pub title: &'a str,
-    pub web_url: &'a str,
+pub struct SentinelTemplate {
+    pub email_domain: String,
+    pub reference: String,
+    pub title: String,
+    pub web_url: String,
 }
 
-#[derive(Template, Copy, Clone)]
+#[derive(Template, Clone)]
 #[template(path = "created.html", ext = "html", escape = "none")]
-pub struct FeedCreatedTemplate<'a> {
-    pub email_domain: &'a str,
-    pub reference: &'a str,
-    pub title: &'a str,
-    pub web_url: &'a str,
-    pub entry: SentinelTemplate<'a>,
+#[allow(dead_code)]
+pub struct FeedCreatedTemplate {
+    pub email_domain: String,
+    pub reference: String,
+    pub title: String,
+    pub web_url: String,
+    pub entry: SentinelTemplate,
 }
 
 impl NewFeed {
@@ -108,81 +99,71 @@ impl NewFeed {
             .get_or_insert_with(NewFeed::new_reference)
             .to_owned();
 
-        let _inserted: i64 = match sqlx::query_as(
-            r#"WITH inserted AS (
-                INSERT INTO "feeds" ("reference", "title") VALUES ($1, $2)
-            RETURNING 1) SELECT COUNT(*) FROM inserted;"#,
-        )
-        .bind(self.reference.as_ref().unwrap())
-        .bind(&self.title)
-        .fetch_one(pool)
-        .await
-        {
-            Ok(tup) => {
-                if matches!(tup, (_inserted,)) && tup.0 > 0 {
-                    tup.0
-                } else {
-                    return Err(Box::new(DatabaseError::CouldNotInsert));
-                }
-            }
-            Err(e) => {
-                debug!(
-                    "Couldn't INSERT feed ref:{:?} title:{} ({})",
-                    &self.reference, &self.title, e
-                );
-                return Err(Box::new(DatabaseError::CouldNotInsert));
-            }
-        };
-
         let content = SentinelTemplate {
-            email_domain: EMAIL_DOMAIN,
-            reference: self.reference.as_ref().unwrap(),
-            title: &self.title,
-            web_url: WEB_URL,
-        };
-        let content = content.render().unwrap();
+            email_domain: email_domain(),
+            reference: reference.clone(),
+            title: self.title.clone(),
+            web_url: web_url(),
+        }
+        .render()
+        .map_err(|e| {
+            debug!("Couldn't render SentinelTemplate: {}", e);
+            Box::new(DatabaseError::CouldNotInsert) as Box<dyn Error>
+        })?;
 
         let entry_title = format!("{} inbox created!", self.title);
 
-        let (n_rows,): (i64,) = sqlx::query_as(concat!(
-            r#"WITH inserted AS (
-                INSERT INTO "entries"
-                ("reference", "title", "author", "content")
-                VALUES ($1, $2, $3, $4) RETURNING 1)
-                SELECT count(*) FROM inserted;"#
-        ))
-        .bind(self.reference.as_ref().unwrap())
+        let mut tx = pool.begin().await?;
+
+        sqlx::query(r#"INSERT INTO "feeds" ("reference", "title") VALUES ($1, $2)"#)
+            .bind(&reference)
+            .bind(&self.title)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                debug!(
+                    "Couldn't INSERT feed ref:{} title:{} ({})",
+                    &reference, &self.title, e
+                );
+                Box::new(DatabaseError::CouldNotInsert) as Box<dyn Error>
+            })?;
+
+        sqlx::query(
+            r#"INSERT INTO "entries" ("reference", "title", "author", "content") VALUES ($1, $2, $3, $4)"#,
+        )
+        .bind(&reference)
         .bind(entry_title)
         .bind("Kill The Newsletter")
         .bind(content)
-        .fetch_one(pool)
-        .await?;
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            debug!(
+                "Couldn't INSERT sentinel entry ref:{} ({})",
+                &reference, e
+            );
+            Box::new(DatabaseError::CouldNotInsert) as Box<dyn Error>
+        })?;
 
-        match n_rows {
-            n_rows if n_rows > 0 => Ok(reference),
-            _ => {
-                debug!(
-                    "Couldn't INSERT entry ref:{:?} title:{}",
-                    &self.reference, &self.title
-                );
-                Err(Box::new(DatabaseError::CouldNotInsert))
-            }
-        }
+        tx.commit().await?;
+
+        Ok(reference)
     }
 
     pub fn created_template(&self) -> FeedCreatedTemplate {
+        let reference = self.reference.as_ref().unwrap().clone();
         let entry = SentinelTemplate {
-            email_domain: EMAIL_DOMAIN,
-            reference: self.reference.as_ref().unwrap(),
-            title: &self.title,
-            web_url: WEB_URL,
+            email_domain: email_domain(),
+            reference: reference.clone(),
+            title: self.title.clone(),
+            web_url: web_url(),
         };
 
         FeedCreatedTemplate {
-            email_domain: EMAIL_DOMAIN,
-            reference: self.reference.as_ref().unwrap(),
-            title: &self.title,
-            web_url: WEB_URL,
+            email_domain: email_domain(),
+            reference,
+            title: self.title.clone(),
+            web_url: web_url(),
             entry,
         }
     }

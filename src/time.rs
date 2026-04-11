@@ -1,25 +1,24 @@
 //! Time helpers to create, format, and parse datetimes in epoch,
-//! SQLite, and RFC3339 (Atom) standards.
+//! PostgreSQL, and RFC3339 (Atom) standards.
 use chrono::{DateTime, NaiveDateTime, Utc};
 
 /// Usage
 /// ```
-/// # use ktn::time::sqlite_datetime_to_rfc3339;
+/// # use ktn::time::datetime_to_rfc3339;
 /// let date_in = "2021-12-01 12:01:03";
 /// let date_out = "2021-12-01T12:01:03+00:00";
 ///
 /// assert_eq!(
-///     sqlite_datetime_to_rfc3339(&date_in),
+///     datetime_to_rfc3339(&date_in),
 ///     date_out,
 ///     "A valid date wasn't parsed properly"
 /// );
 /// ```
-pub fn sqlite_datetime_to_rfc3339(date: &str) -> String {
-    let dt: DateTime<Utc> = DateTime::from_utc(
+pub fn datetime_to_rfc3339(date: &str) -> String {
+    let dt: DateTime<Utc> =
         NaiveDateTime::parse_from_str(&date[..19], "%Y-%m-%d %H:%M:%S")
-            .unwrap(),
-        Utc,
-    );
+            .unwrap()
+            .and_utc();
 
     dt.to_rfc3339()
 }
@@ -44,43 +43,45 @@ impl From<i64> for Epoch {
 
 impl ToString for Epoch {
     fn to_string(&self) -> String {
-        NaiveDateTime::from_timestamp(self.0, 0)
+        DateTime::from_timestamp(self.0, 0)
+            .unwrap_or_default()
+            .naive_utc()
             .format("%Y-%m-%d %H:%M:%S")
             .to_string()
     }
 }
 
 pub mod filters {
-    use crate::time::sqlite_datetime_to_rfc3339;
+    use crate::time::datetime_to_rfc3339;
 
     pub fn rfc3339(s: &str) -> ::askama::Result<String> {
-        Ok(sqlite_datetime_to_rfc3339(s))
+        Ok(datetime_to_rfc3339(s))
     }
 }
 
 mod tests {
 
     #[test]
-    fn sqlite_datetime_to_rfc3339_valid_date() {
-        use super::sqlite_datetime_to_rfc3339;
+    fn datetime_to_rfc3339_valid_date() {
+        use super::datetime_to_rfc3339;
         let date_in = "2021-12-01 12:01:03";
         let date_out = "2021-12-01T12:01:03+00:00";
 
         assert_eq!(
-            sqlite_datetime_to_rfc3339(&date_in),
+            datetime_to_rfc3339(&date_in),
             date_out,
             "A valid date wasn't parsed properly"
         );
     }
 
     #[test]
-    fn sqlite_datetime_to_rfc3339_valid_date_string() {
-        use super::sqlite_datetime_to_rfc3339;
+    fn datetime_to_rfc3339_valid_date_string() {
+        use super::datetime_to_rfc3339;
         let date_in: String = String::from("2021-12-01 12:01:03");
         let date_out = "2021-12-01T12:01:03+00:00";
 
         assert_eq!(
-            sqlite_datetime_to_rfc3339(&date_in),
+            datetime_to_rfc3339(&date_in),
             date_out,
             "A valid date wasn't parsed properly"
         );
@@ -88,21 +89,21 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn sqlite_datetime_to_rfc3339_wrong_date() {
-        use super::sqlite_datetime_to_rfc3339;
+    fn datetime_to_rfc3339_wrong_date() {
+        use super::datetime_to_rfc3339;
         let date_in = "2021-13-01 12:01:03";
         let date_out = "2021-13-01T12:01:03+00:00";
 
-        assert_eq!(sqlite_datetime_to_rfc3339(&date_in), date_out);
+        assert_eq!(datetime_to_rfc3339(&date_in), date_out);
     }
 
     #[test]
     #[should_panic]
-    fn sqlite_datetime_to_rfc3339_not_sqlite_format() {
-        use super::sqlite_datetime_to_rfc3339;
+    fn datetime_to_rfc3339_not_sqlite_format() {
+        use super::datetime_to_rfc3339;
         let date_in = "2021-12-01T12:01:03Z";
         let date_out = "2021-12-01T12:01:03+00:00";
 
-        assert_eq!(sqlite_datetime_to_rfc3339(&date_in), date_out);
+        assert_eq!(datetime_to_rfc3339(&date_in), date_out);
     }
 }

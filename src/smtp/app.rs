@@ -7,7 +7,7 @@
 use std::error::Error;
 use tokio::io::BufReader;
 use tokio::net::{TcpListener, TcpStream};
-use tracing::{error, info, span};
+use tracing::{error, info, span, warn};
 
 use crate::database::Pool;
 use crate::models::Entry;
@@ -28,11 +28,17 @@ pub async fn serve_smtp(
     pool: Pool,
 ) -> Result<(), Box<dyn Error>> {
     loop {
-        let (mut socket, _) = listener.accept().await.unwrap();
+        let (mut socket, peer) = match listener.accept().await {
+            Ok(conn) => conn,
+            Err(e) => {
+                warn!("SMTP accept error: {}", e);
+                continue;
+            }
+        };
         let pool_arc = pool.clone();
         tokio::spawn(async move {
             if let Err(e) = handle_smtp_request(&mut socket, &pool_arc).await {
-                error!("SMTP Handler Error: {}", e);
+                error!("SMTP Handler Error from {}: {}", peer, e);
             }
         });
     }
@@ -67,7 +73,7 @@ async fn handle_smtp_request(
     };
 
     match entry.save(pool).await {
-        Ok(_) => {
+        Ok(()) => {
             info!("Email stored as {}", entry);
             Ok(SMTPResult::Success { email: None })
         }

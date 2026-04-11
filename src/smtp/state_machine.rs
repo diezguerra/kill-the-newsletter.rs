@@ -8,7 +8,9 @@ use tokio::net::TcpStream;
 use tracing::{debug, trace};
 
 use crate::smtp::app::{Email, SMTPResult};
-use crate::vars::EMAIL_DOMAIN;
+use crate::vars::email_domain;
+
+const MAX_EMAIL_BYTES: usize = 10 * 1024 * 1024; // 10 MB
 
 #[derive(Debug, PartialEq)]
 pub enum State {
@@ -121,6 +123,13 @@ impl State {
                             buf.push_str(&loop_buf);
                             loop_buf.clear();
                             loop_count += 1;
+
+                            if buf.len() > MAX_EMAIL_BYTES {
+                                return Err(format!(
+                                    "Email body exceeded {} byte limit",
+                                    MAX_EMAIL_BYTES
+                                ));
+                            }
                         }
                     }
                 }
@@ -137,7 +146,7 @@ impl State {
     async fn step(&self, stream: &mut BufReader<&mut TcpStream>) -> Event {
         match *self {
             State::Connected => {
-                State::send_command(stream, &format!("220 {}", EMAIL_DOMAIN))
+                State::send_command(stream, &format!("220 {}", email_domain()))
                     .await;
             }
             State::Greeted | State::MailFrom | State::RcptTo => {

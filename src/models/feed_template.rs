@@ -1,6 +1,6 @@
 //! Representation of the Atom XML template to be rendered
 
-use askama_axum::Template;
+use askama::Template;
 
 use crate::models::Entry;
 use crate::time::filters;

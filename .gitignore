@@ -1,5 +1,7 @@
-*.lock
 target/
 *.db
 *.db-*
 static/*.css
+node_modules/
+.env
+.claude/

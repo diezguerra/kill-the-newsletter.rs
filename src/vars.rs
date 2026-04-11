@@ -1,5 +1,25 @@
-use dotenv_codegen::dotenv;
+use std::env::VarError;
 
-pub const WEB_URL: &str = dotenv!("WEB_URL");
-pub const EMAIL_DOMAIN: &str = dotenv!("EMAIL_DOMAIN");
-pub const STATIC_FOLDER: &str = dotenv!("STATIC_FOLDER");
+pub fn web_url() -> String {
+    required_var("WEB_URL")
+}
+
+pub fn email_domain() -> String {
+    required_var("EMAIL_DOMAIN")
+}
+
+pub fn static_folder() -> String {
+    required_var("STATIC_FOLDER")
+}
+
+fn required_var(name: &str) -> String {
+    match std::env::var(name) {
+        Ok(v) => v,
+        Err(VarError::NotPresent) => {
+            panic!("Required environment variable {} is not set", name)
+        }
+        Err(VarError::NotUnicode(_)) => {
+            panic!("Environment variable {} contains invalid UTF-8", name)
+        }
+    }
+}

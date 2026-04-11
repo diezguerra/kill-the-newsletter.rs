@@ -1,25 +1,25 @@
 use askama::Template;
 use axum::{
-    body,
-    extract::{Extension, Form, Path},
+    body::Body,
+    extract::{Form, Path, State},
     http::{self, StatusCode},
     response::{IntoResponse, Redirect, Response},
 };
 use tracing::debug;
 
 use crate::database::Pool;
-use crate::models::{Entry, Feed, FeedAtomTemplate, NewFeed};
-use crate::vars::{EMAIL_DOMAIN, WEB_URL};
+use crate::models::{CreateFeedForm, Entry, Feed, FeedAtomTemplate, NewFeed};
+use crate::vars::{email_domain, web_url};
 use crate::web::errors::KtnError;
 
 pub async fn create_feed(
-    form: Form<NewFeed>,
-    Extension(pool): Extension<Pool>,
+    State(pool): State<Pool>,
+    form: Form<CreateFeedForm>,
 ) -> impl IntoResponse {
-    println!("{:?}", form);
+    debug!("{:?}", form);
     let mut form = NewFeed {
         title: form.title.to_owned(),
-        reference: form.reference.to_owned(),
+        reference: None,
     };
     let redir: String = match form.save(&pool).await {
         Ok(reference) => {
@@ -33,14 +33,14 @@ pub async fn create_feed(
 
 pub async fn get_feed(
     Path(reference): Path<String>,
-    Extension(pool): Extension<Pool>,
+    State(pool): State<Pool>,
 ) -> Result<impl IntoResponse, KtnError> {
     match reference {
         rr if reference.ends_with(".html") => {
-            get_feed_html(Path(rr), Extension(pool)).await
+            get_feed_html(Path(rr), State(pool)).await
         }
         rr if reference.ends_with(".xml") => {
-            get_feed_xml(Path(rr), Extension(pool)).await
+            get_feed_xml(Path(rr), State(pool)).await
         }
         _ => Err(KtnError::NotFoundError),
     }
@@ -48,7 +48,7 @@ pub async fn get_feed(
 
 pub async fn get_feed_html(
     Path(reference): Path<String>,
-    Extension(pool): Extension<Pool>,
+    State(pool): State<Pool>,
 ) -> Result<Response, KtnError> {
     let no_ext: &str = reference.split(".html").next().unwrap();
     let title = match Feed::get_title_given_reference(no_ext, &pool).await {
@@ -73,7 +73,7 @@ pub async fn get_feed_html(
                 http::header::CONTENT_TYPE,
                 http::HeaderValue::from_static("text/html; charset=utf-8"),
             )
-            .body(body::boxed(body::Full::from(template)))
+            .body(Body::from(template))
             .unwrap()),
         _ => Err(KtnError::InternalServerError),
     }
@@ -81,7 +81,7 @@ pub async fn get_feed_html(
 
 pub async fn get_feed_xml(
     Path(reference): Path<String>,
-    Extension(pool): Extension<Pool>,
+    State(pool): State<Pool>,
 ) -> Result<Response, KtnError> {
     let no_ext: &str = reference.split(".xml").next().unwrap();
     let entries = match Entry::find_by_reference(no_ext, &pool).await {
@@ -101,8 +101,8 @@ pub async fn get_feed_xml(
     };
 
     let template = FeedAtomTemplate {
-        web_url: String::from(WEB_URL),
-        email_domain: String::from(EMAIL_DOMAIN),
+        web_url: web_url(),
+        email_domain: email_domain(),
         feed_title: title,
         feed_reference: no_ext.to_owned(),
         entries,
@@ -118,10 +118,14 @@ pub async fn get_feed_xml(
                     "application/atom+xml; charset=utf-8",
                 ),
             )
-            .body(body::boxed(body::Full::from(template)))
+            .body(Body::from(template))
             .unwrap()),
         _ => Err(KtnError::InternalServerError),
     }
+}
+
+pub async fn health() -> impl IntoResponse {
+    StatusCode::OK
 }
 
 pub async fn get_index() -> impl IntoResponse {
@@ -132,7 +136,7 @@ pub async fn get_index() -> impl IntoResponse {
     }
 
     let template = IndexTemplate {
-        web_url: String::from(WEB_URL),
+        web_url: web_url(),
     };
 
     Response::builder()
@@ -141,10 +145,8 @@ pub async fn get_index() -> impl IntoResponse {
             http::header::CONTENT_TYPE,
             http::HeaderValue::from_static("text/html; charset=utf-8"),
         )
-        .body(body::boxed(body::Full::from(
-            template
-                .render()
-                .unwrap_or_else(|_| "Couldn't render IndexTemplate".to_owned()),
-        )))
+        .body(Body::from(template.render().unwrap_or_else(|_| {
+            "Couldn't render IndexTemplate".to_owned()
+        })))
         .unwrap()
 }

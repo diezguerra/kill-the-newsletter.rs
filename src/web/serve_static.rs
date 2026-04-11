@@ -10,17 +10,15 @@
 //! This was yanked from <https://github.com/tokio-rs/axum/discussions/446>
 
 use axum::{
-    body::{boxed, Body, BoxBody},
+    body::Body,
     http::{Request, Response, StatusCode, Uri},
 };
 use tower::ServiceExt;
 use tower_http::services::ServeDir;
 
-use crate::vars::STATIC_FOLDER;
+use crate::vars::static_folder;
 
-pub async fn handler(
-    uri: Uri,
-) -> Result<Response<BoxBody>, (StatusCode, String)> {
+pub async fn handler(uri: Uri) -> Result<Response<Body>, (StatusCode, String)> {
     let res = get_static_file(uri.clone()).await?;
 
     if res.status() == StatusCode::NOT_FOUND {
@@ -40,13 +38,13 @@ pub async fn handler(
 
 async fn get_static_file(
     uri: Uri,
-) -> Result<Response<BoxBody>, (StatusCode, String)> {
+) -> Result<Response<Body>, (StatusCode, String)> {
     let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
 
-    // `ServeDir` implements `tower::Service` so,
-    // we can call it with `tower::ServiceExt::oneshot`
-    match ServeDir::new(STATIC_FOLDER).oneshot(req).await {
-        Ok(res) => Ok(res.map(boxed)),
+    // `ServeDir` implements `tower::Service` so we can call it with
+    // `tower::ServiceExt::oneshot`
+    match ServeDir::new(static_folder()).oneshot(req).await {
+        Ok(res) => Ok(res.map(Body::new)),
         Err(err) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Something went wrong: {}", err),

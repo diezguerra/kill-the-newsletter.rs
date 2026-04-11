@@ -13,11 +13,9 @@
  * ```
 */
 
-use std::error::Error;
 use tracing::debug;
 
-use crate::database::{DatabaseError, Pool};
-use crate::models::Feed;
+use crate::database::Pool;
 
 #[derive(Debug, sqlx::FromRow)]
 pub struct Entry {
@@ -54,42 +52,52 @@ impl Entry {
         .await
     }
 
-    /// Saves the [`Entry`] to the database, unless the [`Feed`] doesn't exist.
-    pub async fn save(&self, pool: &Pool) -> Result<(), Box<dyn Error>> {
-        if !Feed::feed_exists(&self.reference, pool).await? {
-            let err: Box<dyn Error> = format!(
-                "Tried saving Entry for Feed ref:{} which didn't exist",
-                &self.reference
-            )
-            .into();
-            return Err(err);
-        }
-
-        let (n_rows,): (i64,) = sqlx::query_as(
-            r#"WITH inserted AS (INSERT INTO "entries"
+    /// Saves the [`Entry`] to the database.
+    /// Returns an error if the feed reference doesn't exist (FK violation).
+    /// Also trims the oldest entries beyond `MAX_ENTRIES_PER_FEED` for this feed.
+    pub async fn save(&self, pool: &Pool) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r#"INSERT INTO "entries"
                 ("reference", "title", "author", "content", "created_at")
-                VALUES ($1, $2, $3, $4, $5) RETURNING 1)
-                SELECT COUNT(*) FROM inserted;"#,
+                VALUES ($1, $2, $3, $4, $5)"#,
         )
         .bind(&self.reference)
         .bind(&self.title)
         // We don't need the address for display within the feed
-        .bind(&self.author.split('<').next().unwrap_or("").trim())
+        .bind(self.author.split('<').next().unwrap_or("").trim())
         .bind(&self.content)
         .bind(&self.created_at)
-        .fetch_one(pool)
-        .await?;
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            debug!(
+                "Couldn't INSERT entry:{} for ref:{} ({})",
+                &self, &self.reference, e
+            );
+            e
+        })?;
 
-        match n_rows {
-            n_rows if n_rows > 0 => Ok(()),
-            n_rows if n_rows == 0 => Ok(()),
-            _ => {
-                debug!(
-                    "Couldn't INSERT entry:{} for ref:{}",
-                    &self, &self.reference
-                );
-                Err(Box::new(DatabaseError::CouldNotInsert))
-            }
-        }
+        // Keep at most MAX_ENTRIES_PER_FEED entries per feed, deleting the oldest.
+        const MAX_ENTRIES_PER_FEED: i64 = 100;
+        sqlx::query(
+            r#"DELETE FROM "entries"
+                WHERE reference = $1
+                AND id NOT IN (
+                    SELECT id FROM "entries"
+                    WHERE reference = $1
+                    ORDER BY created_at DESC
+                    LIMIT $2
+                )"#,
+        )
+        .bind(&self.reference)
+        .bind(MAX_ENTRIES_PER_FEED)
+        .execute(pool)
+        .await
+        .map_err(|e| {
+            debug!("Couldn't trim old entries for ref:{} ({})", &self.reference, e);
+            e
+        })?;
+
+        Ok(())
     }
 }

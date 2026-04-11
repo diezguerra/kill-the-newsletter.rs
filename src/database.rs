@@ -1,4 +1,4 @@
-//!  Thread-safe SQLite connection pool instatiation
+//!  PostgreSQL connection pool instantiation
 use sqlx::{postgres::PgPoolOptions, Pool as SqlxPool};
 use thiserror::Error;
 
@@ -12,7 +12,7 @@ pub enum DatabaseError {
 
 pub async fn get_db_pool() -> Result<Pool, sqlx::Error> {
     let pool = PgPoolOptions::new()
-        .connect_timeout(std::time::Duration::new(3, 0))
+        .acquire_timeout(std::time::Duration::new(3, 0))
         .max_connections(20)
         .connect(&std::env::var("DATABASE_URL").unwrap())
         .await

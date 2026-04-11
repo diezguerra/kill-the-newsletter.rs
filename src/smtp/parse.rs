@@ -6,24 +6,28 @@
 //! Some fun with Traits, for good measure.
 
 use mailparse::{dateparse, parse_mail, MailHeaderMap};
-use regex::Regex;
+use regex::Regex; // used via LazyLock below
+use std::sync::LazyLock;
 use tracing::{debug, warn};
 
 use crate::models::Entry;
 use crate::smtp::app::Email;
 use crate::time::Epoch;
-use crate::vars::EMAIL_DOMAIN;
+use crate::vars::email_domain;
 
 // Yanked blindly from https://emailregex.com/
-const EMAIL_REGEX: &str = concat!(
-    r#"(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)"#,
-    r#"*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-"#,
-    r#"\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\"#,
-    r#".)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:25[0-5]|2[0-4][0-9]|[0"#,
-    r#"1]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z"#,
-    r#"0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|"#,
-    r#"\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])"#
-);
+static EMAIL_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(concat!(
+        r#"(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)"#,
+        r#"*|"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-"#,
+        r#"\x09\x0b\x0c\x0e-\x7f])*")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\"#,
+        r#".)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:25[0-5]|2[0-4][0-9]|[0"#,
+        r#"1]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z"#,
+        r#"0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|"#,
+        r#"\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])"#
+    ))
+    .expect("EMAIL_REGEX is a valid regex")
+});
 
 /// Output struct for the SMTP server, containing all the goodies
 pub struct ParsedEmail {
@@ -57,8 +61,9 @@ impl std::fmt::Display for ParsedEmail {
 
 /// Takes the slice of unsigned bytes that is the email DATA body and returns
 /// a parsed struct of type `ParsedEmail`
-fn parse_bytes_to_email(email: &[u8]) -> ParsedEmail {
-    let parsed = parse_mail(email).unwrap();
+fn parse_bytes_to_email(email: &[u8]) -> Result<ParsedEmail, String> {
+    let parsed = parse_mail(email)
+        .map_err(|e| format!("Failed to parse email: {}", e))?;
 
     let subject = parsed
         .headers
@@ -79,20 +84,25 @@ fn parse_bytes_to_email(email: &[u8]) -> ParsedEmail {
 
     // Get the HTML version or the first one if that one isn't found
     if !parsed.subparts.is_empty() {
-        for part in 0..parsed.subparts.len() {
-            if parsed.subparts[part]
-                .ctype
-                .mimetype
-                .starts_with("text/html")
-            {
-                body.push_str(&parsed.subparts[part].get_body().unwrap());
+        for part in &parsed.subparts {
+            if part.ctype.mimetype.starts_with("text/html") {
+                match part.get_body() {
+                    Ok(b) => body.push_str(&b),
+                    Err(e) => warn!("Failed to decode HTML part: {}", e),
+                }
             }
         }
         if body.is_empty() {
-            body.push_str(&parsed.subparts[0].get_body().unwrap());
+            match parsed.subparts[0].get_body() {
+                Ok(b) => body.push_str(&b),
+                Err(e) => warn!("Failed to decode first part: {}", e),
+            }
         }
     } else {
-        body.push_str(&parsed.get_body().unwrap());
+        match parsed.get_body() {
+            Ok(b) => body.push_str(&b),
+            Err(e) => warn!("Failed to decode email body: {}", e),
+        }
     }
 
     let date = Epoch::from(
@@ -109,13 +119,13 @@ fn parse_bytes_to_email(email: &[u8]) -> ParsedEmail {
 
     debug!("Parsed date: {:#?}", date);
 
-    ParsedEmail {
+    Ok(ParsedEmail {
         to,
         from,
         subject,
         date,
         body,
-    }
+    })
 }
 
 impl TryFrom<Email> for Entry {
@@ -126,8 +136,7 @@ impl TryFrom<Email> for Entry {
             return Err("Empty envelope discarded".to_owned());
         }
 
-        let email_find = Regex::new(EMAIL_REGEX).unwrap();
-        let recipient = match email_find.find(&envelope.rcpt) {
+        let recipient = match EMAIL_REGEX.find(&envelope.rcpt) {
             Some(m) => m.as_str(),
             _ => "invalid@email.address",
         };
@@ -135,9 +144,9 @@ impl TryFrom<Email> for Entry {
         debug!("Received email for {}", recipient);
 
         let parsed: ParsedEmail =
-            parse_bytes_to_email(envelope.body.as_bytes());
+            parse_bytes_to_email(envelope.body.as_bytes())?;
 
-        let parsed_to = match email_find.find(&parsed.to) {
+        let parsed_to = match EMAIL_REGEX.find(&parsed.to) {
             Some(m) => m.as_str(),
             _ => "invalid@email.address",
         };
@@ -153,8 +162,8 @@ impl TryFrom<Email> for Entry {
             content: parsed.body,
         };
 
-        if !(recipient.ends_with(EMAIL_DOMAIN)
-            || parsed.to.ends_with(EMAIL_DOMAIN))
+        let domain = email_domain();
+        if !(recipient.ends_with(&domain) || parsed.to.ends_with(&domain))
         {
             Err(format!(
                 "Email for {} received and discarded. Parsed entry: {}",
