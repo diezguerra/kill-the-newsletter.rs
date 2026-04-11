@@ -60,7 +60,6 @@ impl Feed {
 
         Ok(title)
     }
-
 }
 
 #[derive(Template, Clone)]
@@ -115,18 +114,20 @@ impl NewFeed {
 
         let mut tx = pool.begin().await?;
 
-        sqlx::query(r#"INSERT INTO "feeds" ("reference", "title") VALUES ($1, $2)"#)
-            .bind(&reference)
-            .bind(&self.title)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| {
-                debug!(
-                    "Couldn't INSERT feed ref:{} title:{} ({})",
-                    &reference, &self.title, e
-                );
-                Box::new(DatabaseError::CouldNotInsert) as Box<dyn Error>
-            })?;
+        sqlx::query(
+            r#"INSERT INTO "feeds" ("reference", "title") VALUES ($1, $2)"#,
+        )
+        .bind(&reference)
+        .bind(&self.title)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            debug!(
+                "Couldn't INSERT feed ref:{} title:{} ({})",
+                &reference, &self.title, e
+            );
+            Box::new(DatabaseError::CouldNotInsert) as Box<dyn Error>
+        })?;
 
         sqlx::query(
             r#"INSERT INTO "entries" ("reference", "title", "author", "content") VALUES ($1, $2, $3, $4)"#,

@@ -163,8 +163,7 @@ impl TryFrom<Email> for Entry {
         };
 
         let domain = email_domain();
-        if !(recipient.ends_with(&domain) || parsed.to.ends_with(&domain))
-        {
+        if !(recipient.ends_with(&domain) || parsed.to.ends_with(&domain)) {
             Err(format!(
                 "Email for {} received and discarded. Parsed entry: {}",
                 recipient, received

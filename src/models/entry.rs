@@ -94,7 +94,10 @@ impl Entry {
         .execute(pool)
         .await
         .map_err(|e| {
-            debug!("Couldn't trim old entries for ref:{} ({})", &self.reference, e);
+            debug!(
+                "Couldn't trim old entries for ref:{} ({})",
+                &self.reference, e
+            );
             e
         })?;
 

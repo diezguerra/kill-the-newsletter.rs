@@ -32,11 +32,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .unwrap_or_else(|_| "2525".to_owned())
         .parse()?;
 
-    let http_addr: SocketAddr =
-        SocketAddr::from(format!("0.0.0.0:{}", http_port).parse::<SocketAddrV4>()?);
+    let http_addr: SocketAddr = SocketAddr::from(
+        format!("0.0.0.0:{}", http_port).parse::<SocketAddrV4>()?,
+    );
     let http_listener = TcpListener::bind(http_addr).await?;
     let http_app = build_app(pool.clone());
-    let smtp_listener = TcpListener::bind(format!("0.0.0.0:{}", smtp_port)).await?;
+    let smtp_listener =
+        TcpListener::bind(format!("0.0.0.0:{}", smtp_port)).await?;
     let mut sigterm = unix_signal(SignalKind::terminate())?;
 
     // Build a shared shutdown signal for graceful HTTP shutdown.

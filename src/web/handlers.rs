@@ -135,9 +135,7 @@ pub async fn get_index() -> impl IntoResponse {
         pub web_url: String,
     }
 
-    let template = IndexTemplate {
-        web_url: web_url(),
-    };
+    let template = IndexTemplate { web_url: web_url() };
 
     Response::builder()
         .status(StatusCode::OK)
