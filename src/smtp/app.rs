@@ -9,6 +9,8 @@ use std::time::Duration;
 use tokio::io::BufReader;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::timeout;
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 use tracing::{error, info, span, warn};
 
 use crate::database::Pool;
@@ -35,26 +37,41 @@ pub enum SMTPResult {
     },
 }
 
+/// Accepts connections until `shutdown` is cancelled, then stops accepting
+/// new ones and waits for in-flight sessions (spawned per-connection onto
+/// `tracker`) to finish before returning — so a shutdown signal doesn't cut
+/// off a client mid-DATA.
 pub async fn serve_smtp(
     listener: &TcpListener,
     pool: Pool,
+    shutdown: CancellationToken,
 ) -> Result<(), Box<dyn Error>> {
+    let tracker = TaskTracker::new();
+
     loop {
-        let (mut socket, peer) = match listener.accept().await {
-            Ok(conn) => conn,
-            Err(e) => {
-                warn!("SMTP accept error: {}", e);
-                continue;
+        tokio::select! {
+            _ = shutdown.cancelled() => break,
+            accepted = listener.accept() => {
+                let (mut socket, peer) = match accepted {
+                    Ok(conn) => conn,
+                    Err(e) => {
+                        warn!("SMTP accept error: {}", e);
+                        continue;
+                    }
+                };
+                let pool_arc = pool.clone();
+                tracker.spawn(async move {
+                    if let Err(e) = handle_smtp_request(&mut socket, &pool_arc).await {
+                        error!("SMTP Handler Error from {}: {}", peer, e);
+                    }
+                });
             }
-        };
-        let pool_arc = pool.clone();
-        tokio::spawn(async move {
-            if let Err(e) = handle_smtp_request(&mut socket, &pool_arc).await {
-                error!("SMTP Handler Error from {}: {}", peer, e);
-            }
-        });
+        }
     }
-    #[allow(unreachable_code)] // As we wait for the ! type..
+
+    tracker.close();
+    tracker.wait().await;
+
     Ok(())
 }
 
@@ -152,7 +169,7 @@ mod tests {
             .expect("failed to bind ephemeral test port");
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
-            let _ = serve_smtp(&listener, pool).await;
+            let _ = serve_smtp(&listener, pool, CancellationToken::new()).await;
         });
         addr
     }

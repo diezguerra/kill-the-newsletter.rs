@@ -5,3 +5,5 @@ target
 *.db
 *.db-*
 static/*.css
+.claude
+node_modules

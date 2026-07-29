@@ -10,7 +10,6 @@ FROM rust:latest AS builder
 WORKDIR /usr/src/ktn
 COPY . .
 RUN apt-get update && apt-get install -y pkg-config && rm -rf /var/lib/apt/lists/*
-RUN rm .env && mv .env.build .env
 RUN cargo install --features tracing_json --path .
 
 FROM debian:bookworm-slim

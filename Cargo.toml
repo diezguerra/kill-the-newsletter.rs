@@ -19,6 +19,7 @@ tracing = "0"
 tracing-subscriber = { version = "0", features = ["fmt", "env-filter", "json"] }
 tracing-log = "0"
 tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 tower = "0"
 tower-http = { version = "0.6", features = ["compression-full", "trace", "fs", "set-header"] }
 

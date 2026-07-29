@@ -11,7 +11,10 @@
 
 use axum::{
     body::Body,
-    http::{Request, Response, StatusCode, Uri},
+    http::{
+        uri::{PathAndQuery, Uri},
+        Request, Response, StatusCode,
+    },
 };
 use tower::ServiceExt;
 use tower_http::services::ServeDir;
@@ -22,10 +25,25 @@ pub async fn handler(uri: Uri) -> Result<Response<Body>, (StatusCode, String)> {
     let res = get_static_file(uri.clone()).await?;
 
     if res.status() == StatusCode::NOT_FOUND {
-        // try with `.html`
-        // TODO: handle if the Uri has query parameters
-        match format!("{}.html", uri).parse() {
-            Ok(uri_html) => get_static_file(uri_html).await,
+        // try with `.html`, appended to the path only so any query string
+        // isn't dragged along into the filename we look up on disk.
+        let html_path_and_query = match uri.query() {
+            Some(query) => format!("{}.html?{}", uri.path(), query),
+            None => format!("{}.html", uri.path()),
+        };
+
+        match html_path_and_query.parse::<PathAndQuery>() {
+            Ok(path_and_query) => {
+                let mut parts = uri.into_parts();
+                parts.path_and_query = Some(path_and_query);
+                match Uri::from_parts(parts) {
+                    Ok(uri_html) => get_static_file(uri_html).await,
+                    Err(_) => Err((
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        "Invalid URI".to_string(),
+                    )),
+                }
+            }
             Err(_) => Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Invalid URI".to_string(),

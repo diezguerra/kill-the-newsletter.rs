@@ -46,14 +46,12 @@ pub async fn create_feed(
         title: form.title.to_owned(),
         reference: None,
     };
-    let redir: String = match form.save(&pool).await {
-        Ok(reference) => {
-            format!("/feeds/{}.html", reference)
-        }
-        _ => "/500".to_owned(),
-    };
+    let reference = form.save(&pool).await.map_err(|e| {
+        debug!("Couldn't save new feed: {}", e);
+        KtnError::InternalServerError
+    })?;
 
-    Ok(Redirect::to(&redir))
+    Ok(Redirect::to(&format!("/feeds/{}.html", reference)))
 }
 
 pub async fn get_feed(

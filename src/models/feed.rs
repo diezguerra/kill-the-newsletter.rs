@@ -106,66 +106,90 @@ impl NewFeed {
             .to_lowercase()
     }
 
+    /// References are a random 16-char alphanumeric string (36^16 possible
+    /// values), so collisions are vanishingly rare but not impossible. One
+    /// retry with a freshly generated reference is enough to close the gap.
+    const MAX_SAVE_ATTEMPTS: u32 = 2;
+
     pub async fn save(
         &mut self,
         pool: &Pool,
     ) -> Result<String, Box<dyn Error>> {
-        let reference = self
-            .reference
-            .get_or_insert_with(NewFeed::new_reference)
-            .to_owned();
+        let mut attempt = 0;
 
-        let content = SentinelTemplate {
-            email_domain: email_domain(),
-            reference: reference.clone(),
-            title: self.title.clone(),
-            web_url: web_url(),
+        loop {
+            attempt += 1;
+            let reference = self
+                .reference
+                .get_or_insert_with(NewFeed::new_reference)
+                .to_owned();
+
+            let content = SentinelTemplate {
+                email_domain: email_domain(),
+                reference: reference.clone(),
+                title: self.title.clone(),
+                web_url: web_url(),
+            }
+            .render()
+            .map_err(|e| {
+                debug!("Couldn't render SentinelTemplate: {}", e);
+                Box::new(DatabaseError::CouldNotInsert) as Box<dyn Error>
+            })?;
+
+            let entry_title = format!("{} inbox created!", self.title);
+
+            let mut tx = pool.begin().await?;
+
+            let feed_insert = sqlx::query(
+                r#"INSERT INTO "feeds" ("reference", "title") VALUES ($1, $2)"#,
+            )
+            .bind(&reference)
+            .bind(&self.title)
+            .execute(&mut *tx)
+            .await;
+
+            if let Err(e) = feed_insert {
+                let is_unique_violation = e
+                    .as_database_error()
+                    .is_some_and(|db_err| db_err.is_unique_violation());
+
+                if is_unique_violation && attempt < Self::MAX_SAVE_ATTEMPTS {
+                    debug!(
+                        "Reference {} collided, retrying with a new one",
+                        &reference
+                    );
+                    self.reference = None;
+                    continue;
+                }
+
+                debug!(
+                    "Couldn't INSERT feed ref:{} title:{} ({})",
+                    &reference, &self.title, e
+                );
+                return Err(Box::new(DatabaseError::CouldNotInsert));
+            }
+
+            sqlx::query(
+                r#"INSERT INTO "entries" ("reference", "title", "author", "content") VALUES ($1, $2, $3, $4)"#,
+            )
+            .bind(&reference)
+            .bind(entry_title)
+            .bind("Kill The Newsletter")
+            .bind(content)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| {
+                debug!(
+                    "Couldn't INSERT sentinel entry ref:{} ({})",
+                    &reference, e
+                );
+                Box::new(DatabaseError::CouldNotInsert) as Box<dyn Error>
+            })?;
+
+            tx.commit().await?;
+
+            return Ok(reference);
         }
-        .render()
-        .map_err(|e| {
-            debug!("Couldn't render SentinelTemplate: {}", e);
-            Box::new(DatabaseError::CouldNotInsert) as Box<dyn Error>
-        })?;
-
-        let entry_title = format!("{} inbox created!", self.title);
-
-        let mut tx = pool.begin().await?;
-
-        sqlx::query(
-            r#"INSERT INTO "feeds" ("reference", "title") VALUES ($1, $2)"#,
-        )
-        .bind(&reference)
-        .bind(&self.title)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| {
-            debug!(
-                "Couldn't INSERT feed ref:{} title:{} ({})",
-                &reference, &self.title, e
-            );
-            Box::new(DatabaseError::CouldNotInsert) as Box<dyn Error>
-        })?;
-
-        sqlx::query(
-            r#"INSERT INTO "entries" ("reference", "title", "author", "content") VALUES ($1, $2, $3, $4)"#,
-        )
-        .bind(&reference)
-        .bind(entry_title)
-        .bind("Kill The Newsletter")
-        .bind(content)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| {
-            debug!(
-                "Couldn't INSERT sentinel entry ref:{} ({})",
-                &reference, e
-            );
-            Box::new(DatabaseError::CouldNotInsert) as Box<dyn Error>
-        })?;
-
-        tx.commit().await?;
-
-        Ok(reference)
     }
 
     pub fn created_template(&self) -> FeedCreatedTemplate {

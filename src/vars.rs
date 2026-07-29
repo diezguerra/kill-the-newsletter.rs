@@ -12,6 +12,10 @@ pub fn static_folder() -> String {
     required_var("STATIC_FOLDER")
 }
 
+pub fn database_url() -> String {
+    required_var("DATABASE_URL")
+}
+
 fn required_var(name: &str) -> String {
     match std::env::var(name) {
         Ok(v) => v,
