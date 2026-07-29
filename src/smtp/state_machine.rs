@@ -3,14 +3,25 @@
 //! First and clumsy attempt at building a state machine to keep track of
 //! SMTP back and forth communication. Seems to work for simple cases...
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tracing::{debug, trace};
 
+use crate::database::Pool;
+use crate::models::Feed;
 use crate::smtp::app::{Email, SMTPResult};
+use crate::smtp::parse::recipient_reference_from_rcpt;
 use crate::vars::email_domain;
 
 const MAX_EMAIL_BYTES: usize = 10 * 1024 * 1024; // 10 MB
+/// Maximum bytes accepted for a single line (command or DATA body line)
+/// before we give up on the client. Generous enough for real SMTP
+/// commands and typical email header/body lines, but bounded so a
+/// client can't force unbounded memory growth by never sending a `\n`.
+const MAX_LINE_BYTES: usize = 8 * 1024;
+/// How long we'll wait for a single line to complete before giving up.
+const READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, PartialEq)]
 pub enum State {
@@ -70,17 +81,45 @@ impl State {
             .await;
     }
 
+    /// Reads a single `\n`-terminated line, bounded in both size and time:
+    /// gives up with an `Err` if `MAX_LINE_BYTES` is exceeded before a
+    /// newline arrives, or if no newline arrives within `READ_TIMEOUT`.
+    /// This guards against a client that sends an unbounded line (memory
+    /// exhaustion) or that opens a connection and then goes idle forever
+    /// (connection-slot exhaustion).
     async fn read_line(
         stream: &mut BufReader<&mut TcpStream>,
         buf: &mut String,
     ) -> Result<(), String> {
-        match stream.read_line(buf).await {
-            Ok(_) => Ok(()),
-            Err(e) => Err(format!(
-                "Line[:20]: {} Error: {} ",
-                buf.get(..std::cmp::min(20, buf.len())).unwrap().to_owned(),
-                e
-            )),
+        let read_fut = async {
+            let mut bytes = Vec::new();
+            loop {
+                let mut byte = [0u8; 1];
+                match stream.read_exact(&mut byte).await {
+                    Ok(_) => {
+                        bytes.push(byte[0]);
+                        if byte[0] == b'\n' {
+                            return Ok(bytes);
+                        }
+                        if bytes.len() > MAX_LINE_BYTES {
+                            return Err(format!(
+                                "Line exceeded {} byte limit",
+                                MAX_LINE_BYTES
+                            ));
+                        }
+                    }
+                    Err(e) => return Err(format!("Read error: {}", e)),
+                }
+            }
+        };
+
+        match tokio::time::timeout(READ_TIMEOUT, read_fut).await {
+            Ok(Ok(bytes)) => {
+                buf.push_str(&String::from_utf8_lossy(&bytes));
+                Ok(())
+            }
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err("Timed out waiting for client data".to_owned()),
         }
     }
 
@@ -213,7 +252,9 @@ impl State {
         if buf.len() >= 8 && buf[..8].eq_ignore_ascii_case("STARTTLS") {
             State::send_command(stream, "454 TLS Not available").await;
             buf.clear();
-            stream.read_line(&mut buf).await.unwrap();
+            if let Err(e) = State::read_line(stream, &mut buf).await {
+                return Event::Fail { cmd: e };
+            }
         }
 
         let command = buf.split(' ').next().unwrap().to_ascii_uppercase();
@@ -241,11 +282,14 @@ impl State {
     pub async fn run(
         mut self,
         stream: &mut BufReader<&mut TcpStream>,
+        pool: &Pool,
     ) -> Result<SMTPResult, String> {
-        tracing::Span::current().record(
-            "peer",
-            &&stream.get_ref().peer_addr().unwrap().to_string()[..],
-        );
+        let peer = stream
+            .get_ref()
+            .peer_addr()
+            .map(|a| a.to_string())
+            .unwrap_or_else(|_| "unknown".to_owned());
+        tracing::Span::current().record("peer", &peer[..]);
         let mut email = Email {
             rcpt: String::new(),
             body: String::new(),
@@ -260,7 +304,23 @@ impl State {
                     return Ok(SMTPResult::HealthCheck);
                 }
                 Event::Recipient { rcpt } => {
-                    email.rcpt.push_str(rcpt.trim());
+                    let candidate = rcpt.trim().to_owned();
+                    let known = match recipient_reference_from_rcpt(&candidate)
+                    {
+                        Some(reference) => Feed::exists(&reference, pool)
+                            .await
+                            .unwrap_or(false),
+                        None => false,
+                    };
+
+                    if known {
+                        email.rcpt.push_str(&candidate);
+                    } else {
+                        debug!("RCPT TO rejected, unknown feed: {}", candidate);
+                        State::send_command(stream, "550 5.1.1 No such user")
+                            .await;
+                        return Ok(SMTPResult::Rejected);
+                    }
                 }
                 Event::EndOfFile { buf } => {
                     email.body.push_str(buf.trim());

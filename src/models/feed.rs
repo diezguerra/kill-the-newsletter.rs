@@ -60,6 +60,23 @@ impl Feed {
 
         Ok(title)
     }
+
+    /// Returns whether a feed with the given `reference` exists. Used at
+    /// SMTP RCPT-TO time to reject mail for unknown feeds before accepting
+    /// the message body.
+    pub async fn exists(
+        reference: &str,
+        pool: &Pool,
+    ) -> Result<bool, sqlx::Error> {
+        let (exists,): (bool,) = sqlx::query_as(
+            "SELECT EXISTS(SELECT 1 FROM feeds WHERE reference = $1)",
+        )
+        .bind(reference)
+        .fetch_one(pool)
+        .await?;
+
+        Ok(exists)
+    }
 }
 
 #[derive(Template, Clone)]
@@ -72,7 +89,7 @@ pub struct SentinelTemplate {
 }
 
 #[derive(Template, Clone)]
-#[template(path = "created.html", ext = "html", escape = "none")]
+#[template(path = "created.html", ext = "html")]
 #[allow(dead_code)]
 pub struct FeedCreatedTemplate {
     pub email_domain: String,
@@ -167,5 +184,76 @@ impl NewFeed {
             web_url: web_url(),
             entry,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_feed_created_template(title: &str) -> FeedCreatedTemplate {
+        let email_domain = "example.com".to_owned();
+        let web_url = "https://ktnrs.com".to_owned();
+        let reference = "abc123def456".to_owned();
+
+        let entry = SentinelTemplate {
+            email_domain: email_domain.clone(),
+            reference: reference.clone(),
+            title: title.to_owned(),
+            web_url: web_url.clone(),
+        };
+
+        FeedCreatedTemplate {
+            email_domain,
+            reference,
+            title: title.to_owned(),
+            web_url,
+            entry,
+        }
+    }
+
+    /// Confirms that removing `escape = "none"` from `FeedCreatedTemplate`
+    /// (and switching to `{{ entry|safe }}` in `created.html`) did not
+    /// change the rendered output for a normal, non-malicious title: the
+    /// copyable email/feed addresses and the title should still show up
+    /// verbatim, unescaped and un-mangled.
+    #[test]
+    fn feed_created_template_renders_expected_content() {
+        let template = sample_feed_created_template("My Cool Newsletter");
+        let rendered = template.render().expect("template should render");
+
+        assert!(rendered.contains("My Cool Newsletter"));
+        assert!(rendered.contains(
+            "<code class=\"copyable\">abc123def456@example.com</code>"
+        ));
+        assert!(rendered.contains(
+            "<code class=\"copyable\">https://ktnrs.com/feeds/abc123def456.xml</code>"
+        ));
+    }
+
+    /// Proves the `escape = "none"` removal actually re-enables escaping
+    /// for `FeedCreatedTemplate`, and that the `{{ entry|safe }}` filter
+    /// still lets `SentinelTemplate`'s own (already-escaped) HTML through
+    /// without being double-escaped.
+    ///
+    /// We exercise this via `FeedCreatedTemplate` (not `SentinelTemplate`
+    /// directly) because `FeedCreatedTemplate` is the type that previously
+    /// carried the blanket `escape = "none"` bypass — it's the template
+    /// whose fix we need to guard against regressing. `SentinelTemplate`
+    /// never had `escape = "none"`, so a test written only against it
+    /// wouldn't catch a future re-introduction of the template-wide bypass
+    /// on `FeedCreatedTemplate`.
+    #[test]
+    fn feed_created_template_escapes_malicious_title() {
+        let malicious_title = "<script>alert(1)</script>";
+        let template = sample_feed_created_template(malicious_title);
+        let rendered = template.render().expect("template should render");
+
+        // The title flows into the page (via the embedded SentinelTemplate
+        // entry) HTML-escaped...
+        assert!(rendered.contains("&lt;script&gt;alert(1)&lt;/script&gt;"));
+
+        // ...and never appears as a literal, executable <script> tag.
+        assert!(!rendered.contains("<script>alert(1)</script>"));
     }
 }

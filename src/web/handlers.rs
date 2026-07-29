@@ -12,11 +12,36 @@ use crate::models::{CreateFeedForm, Entry, Feed, FeedAtomTemplate, NewFeed};
 use crate::vars::{email_domain, web_url};
 use crate::web::errors::KtnError;
 
+/// Maximum allowed length (in characters) for a feed's `title`, matching
+/// the client-side `maxlength` on the create-feed form. Enforced here too
+/// since the client-side check is trivially bypassed with a direct POST.
+const MAX_TITLE_LEN: usize = 500;
+
+/// Validates a user-supplied feed title. Rejects empty/whitespace-only
+/// titles and titles longer than [`MAX_TITLE_LEN`] characters.
+fn validate_title(title: &str) -> Result<(), KtnError> {
+    if title.trim().is_empty() {
+        return Err(KtnError::BadRequest("Title must not be empty".to_owned()));
+    }
+
+    if title.chars().count() > MAX_TITLE_LEN {
+        return Err(KtnError::BadRequest(format!(
+            "Title must not exceed {} characters",
+            MAX_TITLE_LEN
+        )));
+    }
+
+    Ok(())
+}
+
 pub async fn create_feed(
     State(pool): State<Pool>,
     form: Form<CreateFeedForm>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, KtnError> {
     debug!("{:?}", form);
+
+    validate_title(&form.title)?;
+
     let mut form = NewFeed {
         title: form.title.to_owned(),
         reference: None,
@@ -28,7 +53,7 @@ pub async fn create_feed(
         _ => "/500".to_owned(),
     };
 
-    Redirect::to(&redir)
+    Ok(Redirect::to(&redir))
 }
 
 pub async fn get_feed(
@@ -147,4 +172,39 @@ pub async fn get_index() -> impl IntoResponse {
             "Couldn't render IndexTemplate".to_owned()
         })))
         .unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_title_accepts_normal_length_title() {
+        assert!(validate_title("My Newsletter").is_ok());
+    }
+
+    #[test]
+    fn validate_title_rejects_empty_title() {
+        let err = validate_title("").unwrap_err();
+        assert!(matches!(err, KtnError::BadRequest(_)));
+    }
+
+    #[test]
+    fn validate_title_rejects_whitespace_only_title() {
+        let err = validate_title("   ").unwrap_err();
+        assert!(matches!(err, KtnError::BadRequest(_)));
+    }
+
+    #[test]
+    fn validate_title_accepts_title_of_exactly_max_len() {
+        let title = "a".repeat(MAX_TITLE_LEN);
+        assert!(validate_title(&title).is_ok());
+    }
+
+    #[test]
+    fn validate_title_rejects_title_over_max_len() {
+        let title = "a".repeat(MAX_TITLE_LEN + 1);
+        let err = validate_title(&title).unwrap_err();
+        assert!(matches!(err, KtnError::BadRequest(_)));
+    }
 }

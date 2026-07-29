@@ -8,6 +8,7 @@ use axum::{
 pub enum KtnError {
     NotFoundError,
     InternalServerError,
+    BadRequest(String),
 }
 
 impl std::fmt::Display for KtnError {
@@ -28,6 +29,9 @@ impl IntoResponse for KtnError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Body::from("Undetermined error"),
             ),
+            KtnError::BadRequest(message) => {
+                (StatusCode::BAD_REQUEST, Body::from(message))
+            }
         };
 
         Response::builder().status(status).body(body).unwrap()

@@ -128,6 +128,24 @@ fn parse_bytes_to_email(email: &[u8]) -> Result<ParsedEmail, String> {
     })
 }
 
+/// Extracts the feed `reference` (the local part of the address) from a raw
+/// `RCPT TO:` command line, but only if the address belongs to our domain.
+/// This is the single source of truth for "which feed does this envelope
+/// belong to" — deliberately NOT derived from the `To:` header, which is
+/// sender-controlled and unreliable (BCC delivery, mailing lists, and
+/// forwarded mail routinely omit or rewrite it).
+pub(crate) fn recipient_reference_from_rcpt(rcpt_line: &str) -> Option<String> {
+    reference_for_domain(rcpt_line, &email_domain())
+}
+
+fn reference_for_domain(rcpt_line: &str, domain: &str) -> Option<String> {
+    let address = EMAIL_REGEX.find(rcpt_line)?.as_str();
+    if !address.ends_with(domain) {
+        return None;
+    }
+    address.split('@').next().map(|s| s.to_owned())
+}
+
 impl TryFrom<Email> for Entry {
     type Error = String;
     fn try_from(envelope: Email) -> Result<Self, Self::Error> {
@@ -136,40 +154,63 @@ impl TryFrom<Email> for Entry {
             return Err("Empty envelope discarded".to_owned());
         }
 
-        let recipient = match EMAIL_REGEX.find(&envelope.rcpt) {
-            Some(m) => m.as_str(),
-            _ => "invalid@email.address",
-        };
+        let reference =
+            recipient_reference_from_rcpt(&envelope.rcpt).ok_or_else(|| {
+                format!(
+                    "Email for {:?} received and discarded: invalid or foreign recipient",
+                    envelope.rcpt
+                )
+            })?;
 
-        debug!("Received email for {}", recipient);
+        debug!("Received email for reference {}", reference);
 
         let parsed: ParsedEmail =
             parse_bytes_to_email(envelope.body.as_bytes())?;
 
-        let parsed_to = match EMAIL_REGEX.find(&parsed.to) {
-            Some(m) => m.as_str(),
-            _ => "invalid@email.address",
-        };
-
-        debug!("Parsed envelope addressed to {}", parsed_to);
-
-        let received = Entry {
+        Ok(Entry {
             id: 0, // this won't be used
             created_at: parsed.date,
-            reference: parsed_to.split('@').next().unwrap_or("").to_owned(),
+            reference,
             title: parsed.subject,
             author: parsed.from,
             content: parsed.body,
-        };
+        })
+    }
+}
 
-        let domain = email_domain();
-        if !(recipient.ends_with(&domain) || parsed.to.ends_with(&domain)) {
-            Err(format!(
-                "Email for {} received and discarded. Parsed entry: {}",
-                recipient, received
-            ))
-        } else {
-            Ok(received)
-        }
+#[cfg(test)]
+mod tests {
+    use super::reference_for_domain;
+
+    #[test]
+    fn extracts_reference_for_matching_domain() {
+        assert_eq!(
+            reference_for_domain("RCPT TO:<abc123@ktnrs.test>", "ktnrs.test"),
+            Some("abc123".to_owned())
+        );
+    }
+
+    #[test]
+    fn rejects_foreign_domain() {
+        assert_eq!(
+            reference_for_domain("RCPT TO:<abc123@evil.example>", "ktnrs.test"),
+            None
+        );
+    }
+
+    #[test]
+    fn rejects_unparseable_recipient() {
+        assert_eq!(
+            reference_for_domain("RCPT TO:<garbage>", "ktnrs.test"),
+            None
+        );
+    }
+
+    #[test]
+    fn plain_to_header_style_address_extracts_local_part() {
+        assert_eq!(
+            reference_for_domain("abc123@ktnrs.test", "ktnrs.test"),
+            Some("abc123".to_owned())
+        );
     }
 }
