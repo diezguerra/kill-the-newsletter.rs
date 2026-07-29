@@ -1,0 +1,12 @@
+# cargo-audit configuration: https://docs.rs/cargo-audit/latest/cargo_audit/config
+
+[advisories]
+ignore = [
+    # rsa 0.9.10 Marvin Attack timing sidechannel — no fixed version exists upstream.
+    # rsa is only pulled in transitively via sqlx-mysql, an optional dependency of
+    # sqlx that Cargo.lock always records regardless of feature activation. This
+    # project only enables sqlx's `postgres` feature (see Cargo.toml), so sqlx-mysql
+    # and rsa are never compiled or linked into the binary. Revisit if MySQL support
+    # is ever added, or if upstream ships a fix.
+    "RUSTSEC-2023-0071",
+]
