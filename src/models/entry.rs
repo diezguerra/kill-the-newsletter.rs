@@ -32,7 +32,7 @@ impl std::fmt::Display for Entry {
         write!(
             f,
             r#"Entry(from="{}", title="{}", date="{}")"#,
-            &self.author, &self.title, &self.created_at
+            self.author, self.title, self.created_at
         )
     }
 }
