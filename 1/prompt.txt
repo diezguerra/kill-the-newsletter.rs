@@ -1,0 +1,5 @@
+connect to the application and get me the DATABASE_URL
+
+---
+
+try again
