@@ -1,0 +1,11 @@
+figure out a data truncating plan to save database space.. maybe we drop all entries that are older than a year, and all feeds that have under 3 entries if they were created more than 3 months ago.
+
+---
+
+ERROR:  operator does not exist: text < timestamp with time zone
+LINE 14: WHERE f."created_at" < now() - interval '3 months'
+                              ^
+HINT:  No operator matches the given name and argument types. You might need to add explicit type casts. 
+
+SQL state: 42883
+Character: 514
