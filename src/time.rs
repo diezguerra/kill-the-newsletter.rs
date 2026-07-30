@@ -1,6 +1,6 @@
 //! Time helpers to create, format, and parse datetimes in epoch,
 //! PostgreSQL, and RFC3339 (Atom) standards.
-use chrono::{DateTime, NaiveDateTime, Utc};
+use chrono::{DateTime, Datelike, NaiveDateTime, Utc};
 
 /// Usage
 /// ```
@@ -23,6 +23,10 @@ pub fn datetime_to_rfc3339(date: &str) -> String {
         })
         .map(|dt| dt.and_utc().to_rfc3339())
         .unwrap_or_else(|| FALLBACK_RFC3339.to_owned())
+}
+
+pub fn current_year() -> i32 {
+    Utc::now().year()
 }
 
 #[derive(Debug)]
