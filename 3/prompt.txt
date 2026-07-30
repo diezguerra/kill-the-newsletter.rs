@@ -1,0 +1,5 @@
+can you inspect the traffic of my fly app in this folder, and decide whether it makes sense to turn it from a machine to a sprite?
+
+---
+
+Since we have cloudflare in front of the domain, is there something we can do Etags? so that cloudflare deals with most checks?
