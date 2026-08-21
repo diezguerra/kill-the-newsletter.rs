@@ -37,17 +37,36 @@ impl std::fmt::Display for Entry {
     }
 }
 
+/// Maximum number of entries a feed serves in one document.
+///
+/// Kept well below `MAX_ENTRIES_PER_FEED` (the retention cap) so that
+/// what a request has to serialise stays bounded even for feeds whose
+/// stored history predates that cap or was restored from a backup.
+const MAX_FEED_ENTRIES: i64 = 20;
+
 impl Entry {
-    /// Returns all [`Entry`] records for a given [`Feed`] reference
+    /// Returns the most recent `MAX_FEED_ENTRIES` [`Entry`] records for a
+    /// given [`Feed`] reference, newest first.
+    ///
+    /// The limit bounds the served document: a feed's whole history is built
+    /// in memory and serialised on every request, so an unbounded query lets
+    /// a large feed exhaust the machine and fail the request outright.
+    /// `received_at` is server-assigned and ordered on deliberately (see
+    /// `save`); `id` only breaks ties between rows sharing a timestamp, which
+    /// bulk-imported feeds have in abundance. Without it the LIMIT would pick
+    /// an arbitrary — and potentially request-to-request unstable — subset.
     pub async fn find_by_reference(
         reference: &str,
         pool: &Pool,
     ) -> Result<Vec<Entry>, sqlx::Error> {
         sqlx::query_as::<_, Entry>(
             r#"SELECT id, created_at, reference, title, author, content
-            FROM entries WHERE reference = $1 ORDER BY received_at DESC"#,
+            FROM entries WHERE reference = $1
+            ORDER BY received_at DESC, id DESC
+            LIMIT $2"#,
         )
         .bind(reference)
+        .bind(MAX_FEED_ENTRIES)
         .fetch_all(pool)
         .await
     }
@@ -85,7 +104,7 @@ impl Entry {
                 AND id NOT IN (
                     SELECT id FROM "entries"
                     WHERE reference = $1
-                    ORDER BY received_at DESC
+                    ORDER BY received_at DESC, id DESC
                     LIMIT $2
                 )"#,
         )
