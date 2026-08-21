@@ -46,10 +46,10 @@ impl std::fmt::Display for ParsedEmail {
                 r#"ParsedEmail {{ to: {}, from: {}, subject: {}, date: {},"#,
                 r#"" body[..50]: {} }}"#
             ),
-            &self.to,
-            &self.from,
-            &self.subject,
-            &self.date,
+            self.to,
+            self.from,
+            self.subject,
+            self.date,
             if self.body.len() > 50 {
                 &self.body[..50]
             } else {
